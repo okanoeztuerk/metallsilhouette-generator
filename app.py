@@ -15,7 +15,7 @@ def contours_to_svg(edge_img, svg_path, scale=1.0):
     width_px = max_x - min_x
     height_px = max_y - min_y
 
-    svg_width_cm = 60.0  # Standardbreite in cm
+    svg_width_cm = 60.0  # z. B. Standardbreite
     px_to_cm = svg_width_cm / width_px
     svg_height_cm = height_px * px_to_cm
 
@@ -23,6 +23,7 @@ def contours_to_svg(edge_img, svg_path, scale=1.0):
     for contour in contours:
         points = [(p[1] * px_to_cm, p[0] * px_to_cm) for p in contour]
         dwg.add(dwg.polyline(points=points, fill='black', stroke='none'))
+
     return svg_width_cm, svg_height_cm
 
 @app.route('/', methods=['GET', 'POST'])
@@ -37,6 +38,7 @@ def index():
             img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
             edges = cv2.Canny(img, 50, 150)
 
+            os.makedirs('static', exist_ok=True)
             output_path = os.path.join('static', 'silhouette.png')
             cv2.imwrite(output_path, edges)
 
@@ -53,3 +55,7 @@ def index():
                                    breite_cm=round(breite_cm, 2),
                                    höhe_cm=round(höhe_cm, 2))
     return render_template('index.html')
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)

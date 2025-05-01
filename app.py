@@ -4,7 +4,7 @@ import numpy as np
 import os
 from math import sqrt, cos, sin, pi
 from skimage import morphology
-
+import svgwrite
 app = Flask(__name__)
 
 # 1) Einfache Silhouette

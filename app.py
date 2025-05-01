@@ -2,60 +2,125 @@ from flask import Flask, request, render_template
 import cv2
 import numpy as np
 import os
-from skimage import measure
+from skimage import measure, morphology
 import svgwrite
 
 app = Flask(__name__)
 
-def contours_to_svg(edge_img, svg_path, scale=1.0):
-    contours = measure.find_contours(edge_img, 0.8)
-    all_points = np.vstack(contours)
-    min_y, min_x = np.min(all_points, axis=0)
-    max_y, max_x = np.max(all_points, axis=0)
-    width_px = max_x - min_x
-    height_px = max_y - min_y
+def einfache_silhouette(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours, image.shape[:2]
 
-    svg_width_cm = 60.0  # z. B. Standardbreite
-    px_to_cm = svg_width_cm / width_px
-    svg_height_cm = height_px * px_to_cm
+def glatte_silhouette(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                     cv2.THRESH_BINARY_INV, 51, 10)
+    cleaned = morphology.remove_small_objects(adaptive.astype(bool), min_size=500)
+    cleaned = (cleaned * 255).astype(np.uint8)
+    contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours, image.shape[:2]
 
-    dwg = svgwrite.Drawing(svg_path, size=(f"{svg_width_cm}cm", f"{svg_height_cm}cm"))
-    for contour in contours:
-        points = [(p[1] * px_to_cm, p[0] * px_to_cm) for p in contour]
-        dwg.add(dwg.polyline(points=points, fill='black', stroke='none'))
+def punktmuster(image):
+    # Halbton-Effekt mit Floyd–Steinberg Dithering
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Otsu-Schwellenwert
+    _, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Dithering
+    for y in range(bw.shape[0]):
+        for x in range(bw.shape[1]):
+            old = bw[y, x]
+            new = 255 if old > 128 else 0
+            bw[y, x] = new
+            err = old - new
+            if x+1 < bw.shape[1]: bw[y, x+1] = np.clip(bw[y, x+1] + err*7/16, 0, 255)
+            if y+1 < bw.shape[0]:
+                if x>0: bw[y+1, x-1] = np.clip(bw[y+1, x-1] + err*3/16, 0,255)
+                bw[y+1, x]   = np.clip(bw[y+1, x]   + err*5/16, 0,255)
+                if x+1< bw.shape[1]: bw[y+1, x+1] = np.clip(bw[y+1, x+1]+err*1/16,0,255)
+    # Erstelle Punktmuster-Kreise
+    contours = []
+    h, w = bw.shape
+    step = 10  # Rasterabstand
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            val = bw[y, x]
+            if val==0:
+                r = int(step/2)
+            else:
+                r = int((1 - val/255) * (step/2))
+            contours.append([(x, y, r)])
+    return contours, (h, w)
 
-    return svg_width_cm, svg_height_cm
+def linienmuster(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 50,150)
+    # Distance transform
+    dist = cv2.distanceTransform(255-edges, cv2.DIST_L2, 5)
+    # Linien im Abstand
+    contours = []
+    h, w = gray.shape
+    spacing = 15
+    for i in range(0, h, spacing):
+        points = [(0,i), (w,i)]
+        contours.append(points)
+    return contours, (h, w)
 
-@app.route('/', methods=['GET', 'POST'])
+def render_png(contours, size, out_png, style):
+    h, w = size
+    canvas = np.ones((h, w), np.uint8) * 255
+    if style in ("einfach","glatt"):
+        cnts = np.array(contours, dtype=object)
+        cv2.drawContours(canvas, cnts, -1, (0), thickness=cv2.FILLED)
+    elif style=="punktmuster":
+        for x,y,r in contours:
+            cv2.circle(canvas,(x,y),r,(0),-1)
+    elif style=="linien":
+        for p in contours:
+            cv2.line(canvas,p[0],p[1],0,1)
+    # Rahmen
+    cv2.rectangle(canvas,(10,10),(w-10,h-10),0,2)
+    cv2.imwrite(out_png,canvas)
+
+def render_svg(contours, size, out_svg, style):
+    h, w = size
+    dwg = svgwrite.Drawing(out_svg, size=(f"{w}px",f"{h}px"))
+    if style in ("einfach","glatt"):
+        for cnt in contours:
+            pts=[(int(p[0][0]),int(p[0][1])) for p in cnt]
+            dwg.add(dwg.polygon(pts, fill='black'))
+    elif style=="punktmuster":
+        for x,y,r in contours:
+            dwg.add(dwg.circle(center=(x,y), r=r, fill='black'))
+    elif style=="linien":
+        for p in contours:
+            dwg.add(dwg.line(start=p[0], end=p[1], stroke='black', stroke_width=1))
+    dwg.add(dwg.rect(insert=(10,10), size=(w-20,h-20), fill='none',
+                     stroke='black', stroke_width=2))
+    dwg.save()
+
+@app.route('/', methods=['GET','POST'])
 def index():
-    preis = None
-    breite_cm = None
-    höhe_cm = None
-    if request.method == 'POST':
-        file = request.files['image']
-        if file:
-            img_array = np.frombuffer(file.read(), np.uint8)
-            img = cv2.imdecode(img_array, cv2.IMREAD_GRAYSCALE)
-            edges = cv2.Canny(img, 50, 150)
-
-            os.makedirs('static', exist_ok=True)
-            output_path = os.path.join('static', 'silhouette.png')
-            cv2.imwrite(output_path, edges)
-
-            svg_path = os.path.join('static', 'silhouette.svg')
-            breite_cm, höhe_cm = contours_to_svg(edges, svg_path)
-
-            fläche = breite_cm * höhe_cm
-            preis = round(20.0 + (fläche * 0.08), 2)
-
-            return render_template('index.html',
-                                   result_url=output_path,
-                                   svg_url=svg_path,
-                                   preis=preis,
-                                   breite_cm=round(breite_cm, 2),
-                                   höhe_cm=round(höhe_cm, 2))
-    return render_template('index.html')
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    result_url=svg_url=stil=None
+    if request.method=='POST':
+        stil = request.form['stil']
+        imgfile = request.files['image']
+        image = cv2.imdecode(np.frombuffer(imgfile.read(), np.uint8),cv2.IMREAD_COLOR)
+        if stil in ("einfach","glatt"):
+            contours, size = (glatte_silhouette(image) if stil=="glatt"
+                              else einfache_silhouette(image))
+        elif stil=="punktmuster":
+            contours, size = punktmuster(image)
+        elif stil=="linien":
+            contours, size = linienmuster(image)
+        # PNG
+        result_url = os.path.join('static','output.png')
+        render_png(contours, size, result_url, stil)
+        # SVG
+        svg_url = os.path.join('static','output.svg')
+        render_svg(contours, size, svg_url, stil)
+    return render_template('index.html',
+                           result_url=result_url,
+                           svg_url=svg_url,
+                           stil=stil)

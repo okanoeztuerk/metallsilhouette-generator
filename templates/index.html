@@ -1,36 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <title>Metallsilhouette Generator</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    img { border: 1px solid #ccc; margin-bottom: 10px; }
+    select, input[type="file"], button { margin-top: 5px; }
+  </style>
 </head>
 <body>
   <h2>Metallsilhouette Generator</h2>
 
   <form action="/" method="post" enctype="multipart/form-data">
-    <label>Bild hochladen:</label><br>
-    <input type="file" name="image" accept="image/*" required><br><br>
+    <!-- Bild-Upload -->
+    <label for="image">1) Bild hochladen:</label><br>
+    <input type="file" id="image" name="image" accept="image/*" required><br>
 
-    <label>Stil wählen:</label><br>
-    <select name="stil" required>
-      <option value="einfach">1) Einfache Silhouette</option>
-      <option value="glatt">2) Glatte Silhouette</option>
-      <option value="linien">3) Linienmuster</option>
-      <option value="gitter">4) Geometrisches Raster</option>
-      <option value="organisch">5) Organische Ausschnitte</option>
-      <option value="triangle_free">6) Freie Dreiecke mit Knotenpunkten</option>
+    <!-- Stil-Auswahl -->
+    <label for="stil">2) Stil wählen:</label><br>
+    <select id="stil" name="stil" required>
+      <option value="einfach">Einfache Silhouette</option>
+      <option value="glatt">Glatte Silhouette</option>
+      <option value="linien">Linienmuster</option>
+      <option value="gitter">Geometrisches Raster</option>
+      <option value="organisch">Organische Ausschnitte</option>
+      <option value="punktmuster">Waben-Lochmuster</option>
+      <option value="triangle_free">Freie Dreiecke</option>
+    </select><br>
+
+    <!-- Farb-Auswahl -->
+    <label for="farbe">3) Farbe wählen:</label><br>
+    <select id="farbe" name="farbe" required>
+      <option value="schwarz">Schwarz</option>
+      <option value="weiss">Weiß</option>
+      <option value="rot">Rot</option>
+      <option value="gruen">Grün</option>
+      <option value="blau">Blau</option>
+      <option value="gelb">Gelb</option>
     </select><br><br>
-
-    <label>Farbe wählen:</label><br>
-    <input type="color" name="color" value="#000000"><br><br>
 
     <button type="submit">Generieren</button>
   </form>
 
-  {% if result_png %}
-    <h3>Vorschau:</h3>
-    <img src="{{ result_png }}" style="max-width:400px;"><br><br>
-    <a href="{{ result_png }}" download>PNG herunterladen</a><br>
+  <!-- Vorschau hochgeladenes Bild -->
+  {% if upload_url %}
+    <h3>Hochgeladenes Bild:</h3>
+    <img src="{{ upload_url }}" alt="Original Upload" style="max-width: 400px;"><br>
+  {% endif %}
+
+  <!-- Ergebnis-Vorschau -->
+  {% if result_url %}
+    <h3>Generierte Silhouette:</h3>
+    <img src="{{ result_url }}" alt="Silhouette" style="max-width: 400px;"><br>
+    <a href="{{ result_url }}" download>PNG herunterladen</a><br>
   {% endif %}
 
 </body>

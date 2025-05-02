@@ -155,13 +155,13 @@ def index():
         color = COLORS.get(farbe, COLORS['schwarz'])
 
         # PNG
+                # PNG
         canvas = style_triangle_free(
             image,
             step=params['step'],
             max_side=params['max_side'],
             color=color,
-            margin=params['margin'],
-            min_dist=params['step']
+            margin=params['margin']
         )
         out_png = os.path.join('static', 'output.png')
         cv2.imwrite(out_png, canvas)

@@ -14,10 +14,11 @@ def tri_height(side):
     return side * sqrt(3) / 2
 
 # Core rendering function: free-form triangles with node points (PNG)
-def style_triangle_free(image, step, max_side, color, margin):
-    col = (int(color[0]), int(color[1]), int(color[2]))  # BGR tuple
+def style_triangle_free(image, step, max_side, color, margin, min_dist=None):
+    # color is np.array([B, G, R]) – convert to tuple
+    col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # Grayscale, contrast, invert
+    # 1) Grayscale, contrast, invert
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
@@ -26,7 +27,12 @@ def style_triangle_free(image, step, max_side, color, margin):
     h, w = gray.shape
     mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Generate triangle mask
+    # Keep track of triangle centroids for minimum spacing
+    centroids = []
+    if min_dist is None:
+        min_dist = step  # default minimum distance between triangle centers
+
+    # Generate triangle mask with minimum distance enforced
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
@@ -34,8 +40,21 @@ def style_triangle_free(image, step, max_side, color, margin):
             side_len = (1 - avg) * max_side
             if side_len < 3:
                 continue
+
+            # Randomized triangle center
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
+
+            # Enforce minimum centroid distance
+            too_close = False
+            for (px, py) in centroids:
+                if (cx-px)**2 + (cy-py)**2 < min_dist**2:
+                    too_close = True
+                    break
+            if too_close:
+                continue
+            centroids.append((cx, cy))
+
             angle0 = random.uniform(0, 2*pi)
             pts = []
             for i in range(3):
@@ -43,10 +62,14 @@ def style_triangle_free(image, step, max_side, color, margin):
                 px = cx + (side_len/2) * cos(theta)
                 py = cy + (side_len/2) * sin(theta)
                 pts.append((int(px), int(py)))
-            cv2.fillConvexPoly(mask, np.array(pts, np.int32), 255)
 
-    # Frame mask
-    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin)
+            pts_np = np.array(pts, np.int32)
+            cv2.fillConvexPoly(mask, pts_np, 255)
+            for (px, py) in pts:
+                cv2.circle(mask, (px, py), 2, 255, -1)
+
+    # Frame in mask
+    cv2.rectangle(mask, (0, 0), (w - 1, h - 1), 255, thickness=margin)
 
     # Colored canvas
     canvas = np.zeros((h, w, 3), dtype=np.uint8)

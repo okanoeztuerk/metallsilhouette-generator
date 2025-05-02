@@ -14,60 +14,67 @@ def tri_height(side):
 
 # Erzeugt farbiges PNG mit weißen Dreiecken und farbigem Rahmen
 def style_triangle_free(image, step, max_side, color, margin, min_dist=None):
-    # Farbe als Tuple
+    """
+    Erzeugt ein PNG-Canvas mit farbigem Hintergrund und weißen Dreiecken.
+    - min_dist: minimaler Abstand zwischen Dreieckszentren (optional)
+    """
+    # Farbe umwandeln
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # Graustufen, Kontrast, Inversion
+    # Graustufen + Kontrast + Inversion
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
     gray = cv2.bitwise_not(gray)
 
     h, w = gray.shape
-    # Leere Maske
     mask = np.zeros((h, w), dtype=np.uint8)
+    centroids = []  # Speicher für Zentren der Dreiecke
 
-    # Mindestabstand
-    if min_dist is None:
-        min_dist = step
-    centroids = []
-
-    # Dreiecke im inneren Bereich (Margin berücksichtigt)
-    for y in range(margin, h - margin, step):
-        for x in range(margin, w - margin, step):
+    for y in range(0, h, step):
+        for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
-            side_len = (1 - avg) * max_side
-            if side_len < 3:
+            side = (1 - avg) * max_side
+            if side < 3:
                 continue
 
-            cx = x + step/2
-            cy = y + step/2
-            # Abstand prüfen
-            if any((cx - px)**2 + (cy - py)**2 < min_dist**2 for px, py in centroids):
-                continue
-            centroids.append((cx, cy))
+            # Zentrum bestimmen
+            cx = x + step/2 + random.uniform(-step/4, step/4)
+            cy = y + step/2 + random.uniform(-step/4, step/4)
 
+            # Prüfen Mindestabstand
+            if min_dist is not None and centroids:
+                too_close = any((cx - px)**2 + (cy - py)**2 < min_dist**2
+                                for px, py in centroids)
+                if too_close:
+                    continue
+
+            # Dreieckspunkte berechnen
             angle0 = random.uniform(0, 2*pi)
             pts = []
             for i in range(3):
                 theta = angle0 + i * 2*pi/3
-                px = cx + (side_len/2) * cos(theta)
-                py = cy + (side_len/2) * sin(theta)
+                px = cx + (side/2) * cos(theta)
+                py = cy + (side/2) * sin(theta)
                 pts.append((int(px), int(py)))
 
+            # Maske füllen
             pts_np = np.array(pts, np.int32)
             cv2.fillConvexPoly(mask, pts_np, 255)
-            for px, py in pts:
+            for (px, py) in pts:
                 cv2.circle(mask, (px, py), 2, 255, -1)
 
-    # Rahmen
-    cv2.rectangle(mask, (0, 0), (w - 1, h - 1), 255, thickness=margin)
+            # Zentrum merken
+            centroids.append((cx, cy))
 
-    # Canvas mit Farbe
+    # Rahmen in der Maske weiß markieren
+    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin)
+
+    # Farb-Canvas erzeugen
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
     canvas[:] = col
-    # Weiße Dreiecke
+    # Dreiecke und Rahmen in Weiß setzen
     canvas[mask == 255] = (255, 255, 255)
     return canvas
 

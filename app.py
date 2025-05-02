@@ -12,14 +12,15 @@ app = Flask(__name__)
 def tri_height(side):
     return side * sqrt(3) / 2
 
-# Free-Triangle-Stil mit korrekter Farbübergabe
 def style_triangle_free(image, step, max_side, color, margin):
-    # Color kommt als np.array([B,G,R]), wir wandeln um:
+    # color: np.array([B,G,R])
     col = (int(color[0]), int(color[1]), int(color[2]))
 
+    # Graustufe + Inversion
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
+    gray = cv2.bitwise_not(gray)   # invertieren
 
     h, w = gray.shape
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
@@ -43,21 +44,20 @@ def style_triangle_free(image, step, max_side, color, margin):
                 pts.append((int(px), int(py)))
 
             pts_np = np.array(pts, np.int32)
-            # Dreieck füllen mit col (Tuple)
+            # Dreieck in Mint/Senf füllen
             cv2.fillConvexPoly(canvas, pts_np, col)
-            # Knotenpunkte zeichnen
+            # Knotenpunkte
             for (px, py) in pts:
                 cv2.circle(canvas, (px, py), 2, col, -1)
 
-    # Rahmen komplett am Rand
-    cv2.rectangle(
-        canvas,
-        (0, 0),
-        (w-1, h-1),
-        col,
-        thickness=margin
-    )
+    # Rahmen komplett am Rand in gleicher Farbe
+    cv2.rectangle(canvas,
+                  (0, 0),
+                  (w-1, h-1),
+                  col,
+                  thickness=margin)
     return canvas
+
 
 
 # Style parameters for each option
@@ -79,6 +79,8 @@ COLORS = {
     'gruen':   np.array([  0, 255,   0], dtype=np.uint8),
     'blau':    np.array([255,   0,   0], dtype=np.uint8),
     'gelb':    np.array([  0, 255, 255], dtype=np.uint8),
+    'mint':   np.array([189, 252, 201], dtype=np.uint8),  # helle Mint-Farbe
+    'senf':   np.array([  0, 165, 255], dtype=np.uint8),  # Senfgelb
 }
 
 @app.route('/', methods=['GET','POST'])

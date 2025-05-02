@@ -52,11 +52,15 @@
   {% endif %}
 
   <!-- Ergebnis-Vorschau -->
-  {% if result_url %}
-    <h3>Generierte Silhouette:</h3>
-    <img src="{{ result_url }}" alt="Silhouette" style="max-width: 400px;"><br>
-    <a href="{{ result_url }}" download>PNG herunterladen</a><br>
-    <a href="{{ result_svg }}" download>SVG herunterladen</a><br>
+  {% if result_url or result_svg %}
+    <h3>Ergebnis:</h3>
+    {% if result_url %}
+      <img src="{{ result_url }}" alt="Silhouette PNG" style="max-width: 400px;"><br>
+      <a href="{{ result_url }}" download>PNG herunterladen</a><br>
+    {% endif %}
+    {% if result_svg %}
+      <a href="{{ result_svg }}" download>SVG herunterladen</a><br>
+    {% endif %}
   {% endif %}
 
 </body>

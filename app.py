@@ -30,22 +30,19 @@ def style_triangle_free(image, step, max_side, color, margin, min_dist=None):
     # Keep track of triangle centroids for minimum spacing
     centroids = []
     if min_dist is None:
-        min_dist = step  # default minimum distance between triangle centers
+        min_dist = step
 
-    # Generate triangle mask with minimum distance enforced
-    for y in range(0, h, step):
-        for x in range(0, w, step):
+    # Generate triangle mask inside margins to avoid corners
+    for y in range(margin, h - margin, step):
+        for x in range(margin, w - margin, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
             side_len = (1 - avg) * max_side
             if side_len < 3:
                 continue
 
-            # Randomized triangle center
-            cx = x + step/2 + random.uniform(-step/4, step/4)
-            cy = y + step/2 + random.uniform(-step/4, step/4)
-
-            # Enforce minimum centroid distance
+            cx = x + step/2
+            cy = y + step/2
             too_close = False
             for (px, py) in centroids:
                 if (cx-px)**2 + (cy-py)**2 < min_dist**2:
@@ -68,13 +65,14 @@ def style_triangle_free(image, step, max_side, color, margin, min_dist=None):
             for (px, py) in pts:
                 cv2.circle(mask, (px, py), 2, 255, -1)
 
-    # Frame in mask
-    cv2.rectangle(mask, (0, 0), (w - 1, h - 1), 255, thickness=margin)
+    # Frame in mask full width (overwrite corners)
+    # Draw four filled rectangles for borders
+    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin)
 
     # Colored canvas
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col  # background & frame color
-    canvas[mask == 255] = (255, 255, 255)  # triangles white
+    canvas[:] = col
+    canvas[mask == 255] = (255, 255, 255)
     return canvas
 
 # SVG renderer for free-form triangles

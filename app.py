@@ -73,7 +73,7 @@ def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
     dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
     dwg.add(dwg.rect(insert=(0,0), size=(w, h), fill=svgwrite.rgb(r, g, b, mode='RGB')))
 
-    # Draw triangles in white, skip node circles for speed
+    # Draw triangles in white
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]

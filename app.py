@@ -79,16 +79,28 @@ COLORS = {
 @app.route('/', methods=['GET','POST'])
 def index():
     result_url = None
+    upload_url = None  # immer initialisieren
 
     if request.method == 'POST':
         imgfile = request.files['image']
-        stil   = request.form['stil']
-        farbe  = request.form['farbe']
-        image  = cv2.imdecode(np.frombuffer(imgfile.read(), np.uint8), cv2.IMREAD_COLOR)
+        buf = imgfile.read()
+        # Bild einmal einlesen
+        image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
 
+        # Original zwischenspeichern, damit wir es anzeigen können
+        os.makedirs('static', exist_ok=True)
+        upload_path = os.path.join('static', 'upload.png')
+        with open(upload_path, 'wb') as f:
+            f.write(buf)
+        upload_url = upload_path
+
+        # Stil & Farbe auslesen
+        stil  = request.form['stil']
+        farbe = request.form['farbe']
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
         color  = COLORS.get(farbe, COLORS['schwarz'])
 
+        # Generieren
         canvas = style_triangle_free(
             image,
             step=params['step'],
@@ -97,13 +109,18 @@ def index():
             margin=params['margin']
         )
 
-        # Speichern
-        os.makedirs('static', exist_ok=True)
-        out_path = os.path.join('static','output.png')
+        # Ergebnis speichern
+        out_path = os.path.join('static', 'output.png')
         cv2.imwrite(out_path, canvas)
         result_url = out_path
 
-    return render_template('index.html', result_url=result_url)
+    return render_template(
+        'index.html',
+        upload_url=upload_url,
+        result_url=result_url
+    )
+
+
 
 if __name__=='__main__':
     port = int(os.environ.get("PORT",5000))

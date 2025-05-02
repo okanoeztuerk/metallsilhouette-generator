@@ -16,15 +16,16 @@ def style_triangle_free(image, step, max_side, color, margin):
     # color: np.array([B,G,R])
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # Graustufe + Inversion
+    # 1) Graustufe + Kontrast + Inversion
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-    gray = cv2.bitwise_not(gray)   # invertieren
+    gray = cv2.bitwise_not(gray)
 
     h, w = gray.shape
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
 
+    # 2) Maske: Dreiecke + Rahmen als WEIß (255) auf SCHWARZ (0)
+    mask = np.zeros((h, w), dtype=np.uint8)
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
@@ -33,6 +34,7 @@ def style_triangle_free(image, step, max_side, color, margin):
             if side < 3:
                 continue
 
+            # Zufalls-Jitter & Eckpunkte
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
             angle0 = random.uniform(0, 2*pi)
@@ -44,19 +46,22 @@ def style_triangle_free(image, step, max_side, color, margin):
                 pts.append((int(px), int(py)))
 
             pts_np = np.array(pts, np.int32)
-            # Dreieck in Mint/Senf füllen
-            cv2.fillConvexPoly(canvas, pts_np, col)
-            # Knotenpunkte
+            cv2.fillConvexPoly(mask, pts_np, 255)
             for (px, py) in pts:
-                cv2.circle(canvas, (px, py), 2, col, -1)
+                cv2.circle(mask, (px, py), 2, 255, -1)
 
-    # Rahmen komplett am Rand in gleicher Farbe
-    cv2.rectangle(canvas,
-                  (0, 0),
-                  (w-1, h-1),
-                  col,
-                  thickness=margin)
+    # Rahmen in der Maske
+    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin)
+
+    # 3) Farb-Canvas: komplett mit der Wunschfarbe füllen
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = col  # Hintergrund & Rahmenfarbe
+
+    # 4) Dreiecke in Weiß setzen
+    canvas[mask == 255] = (255, 255, 255)
+
     return canvas
+
 
 
 

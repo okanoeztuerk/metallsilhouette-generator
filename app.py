@@ -12,8 +12,11 @@ app = Flask(__name__)
 def tri_height(side):
     return side * sqrt(3) / 2
 
-# Core rendering function: free-form triangles with node points
+# Free-Triangle-Stil mit korrekter Farbübergabe
 def style_triangle_free(image, step, max_side, color, margin):
+    # Color kommt als np.array([B,G,R]), wir wandeln um:
+    col = (int(color[0]), int(color[1]), int(color[2]))
+
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
@@ -40,19 +43,22 @@ def style_triangle_free(image, step, max_side, color, margin):
                 pts.append((int(px), int(py)))
 
             pts_np = np.array(pts, np.int32)
-            cv2.fillConvexPoly(canvas, pts_np, color)
+            # Dreieck füllen mit col (Tuple)
+            cv2.fillConvexPoly(canvas, pts_np, col)
+            # Knotenpunkte zeichnen
             for (px, py) in pts:
-                cv2.circle(canvas, (px, py), 2, color, -1)
+                cv2.circle(canvas, (px, py), 2, col, -1)
 
-    # frame at the very edge
+    # Rahmen komplett am Rand
     cv2.rectangle(
         canvas,
         (0, 0),
         (w-1, h-1),
-        color.tolist(),
+        col,
         thickness=margin
     )
     return canvas
+
 
 # Style parameters for each option
 STYLE_PARAMS = {

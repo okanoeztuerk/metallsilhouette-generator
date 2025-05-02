@@ -54,9 +54,9 @@ def style_triangle_free(image, step, max_side, color, margin):
     canvas[mask == 255] = (255, 255, 255)  # triangles white
     return canvas
 
-# SVG renderer for free-form triangles without node circles
+# SVG renderer for free-form triangles
 def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
-    r, g, b = int(color[2]), int(color[1]), int(color[0])  # convert BGR to RGB
+    r, g, b = int(color[2]), int(color[1]), int(color[0])  # BGR→RGB
 
     # Preprocess grayscale + invert
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -66,7 +66,7 @@ def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
     h, w = gray.shape
 
     dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
-    # Background rectangle
+    # Background rectangle in color
     dwg.add(dwg.rect(insert=(0, 0), size=(w, h), fill=svgwrite.rgb(r, g, b, mode='RGB')))
 
     # Draw triangles
@@ -88,20 +88,20 @@ def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
                 pts.append((px, py))
             dwg.add(dwg.polygon(points=pts, fill='white', stroke='none'))
 
-    # Frame in chosen color
+    # Frame in color
     dwg.add(dwg.rect(insert=(margin, margin), size=(w-2*margin, h-2*margin),
                      fill='none', stroke=svgwrite.rgb(r, g, b, mode='RGB'), stroke_width=margin))
     dwg.save()
 
 # Style parameters for each option
-tSTYLE_PARAMS = {
+STYLE_PARAMS = {
     'einfach':      {'step': 8,  'max_side': 8,  'margin': 10},
     'glatt':        {'step': 12, 'max_side': 12, 'margin': 12},
     'linien':       {'step': 20, 'max_side': 1,  'margin': 15},
     'gitter':       {'step': 18, 'max_side': 15, 'margin': 15},
     'organisch':    {'step': 15, 'max_side': 20, 'margin': 20},
     'punktmuster':  {'step': 20, 'max_side': 10, 'margin': 20},
-    'triangle_free':{'step': 15, 'max_side': 15, 'margin': 30},
+    'triangle_free':{'step': 15, 'max_side': 15, 'margin': 30}
 }
 
 # Color definitions (BGR)
@@ -113,7 +113,7 @@ COLORS = {
     'blau':    np.array([255, 0,   0], dtype=np.uint8),
     'gelb':    np.array([0,   255, 255], dtype=np.uint8),
     'mint':    np.array([189, 252, 201], dtype=np.uint8),
-    'senf':    np.array([0,   165, 255], dtype=np.uint8),
+    'senf':    np.array([0,   165, 255], dtype=np.uint8)
 }
 
 @app.route('/', methods=['GET', 'POST'])

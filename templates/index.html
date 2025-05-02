@@ -18,9 +18,11 @@
       <option value="linien">3) Linienmuster</option>
       <option value="gitter">4) Geometrisches Raster</option>
       <option value="organisch">5) Organische Ausschnitte</option>
-      <option value="punktmuster">6) Waben-Lochmuster</option>
-      <option value="triangle_free">7) Freie Dreiecke mit Knotenpunkten</option>
+      <option value="triangle_free">6) Freie Dreiecke mit Knotenpunkten</option>
     </select><br><br>
+
+    <label>Farbe wählen:</label><br>
+    <input type="color" name="color" value="#000000"><br><br>
 
     <button type="submit">Generieren</button>
   </form>
@@ -29,9 +31,6 @@
     <h3>Vorschau:</h3>
     <img src="{{ result_png }}" style="max-width:400px;"><br><br>
     <a href="{{ result_png }}" download>PNG herunterladen</a><br>
-    {% if result_svg %}
-      <a href="{{ result_svg }}" download>SVG herunterladen</a><br>
-    {% endif %}
   {% endif %}
 
 </body>

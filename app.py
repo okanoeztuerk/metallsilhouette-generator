@@ -8,11 +8,11 @@ from skimage import morphology
 
 app = Flask(__name__)
 
-# Hilfsfunktion: Höhe gleichseitiges Dreieck
+# Helper: equilateral triangle height
 def tri_height(side):
     return side * sqrt(3) / 2
 
-# Freie Dreiecke mit Knotenpunkten (erneuert)
+# Core rendering function: free-form triangles with node points
 def style_triangle_free(image, step, max_side, color, margin):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
@@ -29,7 +29,6 @@ def style_triangle_free(image, step, max_side, color, margin):
             if side < 3:
                 continue
 
-            # Zufälliges Jitter
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
             angle0 = random.uniform(0, 2*pi)
@@ -40,67 +39,64 @@ def style_triangle_free(image, step, max_side, color, margin):
                 py = cy + (side/2) * sin(theta)
                 pts.append((int(px), int(py)))
 
-            # Dreieck füllen
             pts_np = np.array(pts, np.int32)
             cv2.fillConvexPoly(canvas, pts_np, color)
-            # Knotenpunkte
             for (px, py) in pts:
                 cv2.circle(canvas, (px, py), 2, color, -1)
 
-    # Rahmen komplett am Rand
-    cv2.rectangle(canvas,
-                  (0, 0),
-                  (w-1, h-1),
-                  color.tolist(),
-                  thickness=margin)
+    # frame at the very edge
+    cv2.rectangle(
+        canvas,
+        (0, 0),
+        (w-1, h-1),
+        color.tolist(),
+        thickness=margin
+    )
     return canvas
 
-# Mapping: Stil → Parameter für style_triangle_free
+# Style parameters for each option
 STYLE_PARAMS = {
-    'einfach':  {'step':8,  'max_side':8,  'margin':10},
-    'glatt':    {'step':12, 'max_side':12, 'margin':12},
-    'linien':   {'step':20, 'max_side':1,  'margin':15},
-    'gitter':   {'step':18, 'max_side':15, 'margin':15},
-    'organisch':{'step':15, 'max_side':20, 'margin':20},
-    'punktmuster':{'step':20,'max_side':10,'margin':20},
-    'triangle_free': {'step':15,'max_side':15,'margin':30},
+    'einfach':      {'step':8,  'max_side':8,  'margin':10},
+    'glatt':        {'step':12, 'max_side':12, 'margin':12},
+    'linien':       {'step':20, 'max_side':1,  'margin':15},
+    'gitter':       {'step':18, 'max_side':15, 'margin':15},
+    'organisch':    {'step':15, 'max_side':20, 'margin':20},
+    'punktmuster':  {'step':20, 'max_side':10, 'margin':20},
+    'triangle_free':{'step':15, 'max_side':15, 'margin':30},
 }
 
-# 6 Farben als BGR-Arrays
+# 6 selectable colors (BGR for OpenCV)
 COLORS = {
-    'schwarz':   np.array([  0,   0,   0], dtype=np.uint8),
-    'weiss':     np.array([255, 255, 255], dtype=np.uint8),
-    'rot':       np.array([  0,   0, 255], dtype=np.uint8),
-    'gruen':     np.array([  0, 255,   0], dtype=np.uint8),
-    'blau':      np.array([255,   0,   0], dtype=np.uint8),
-    'gelb':      np.array([  0, 255, 255], dtype=np.uint8),
+    'schwarz': np.array([  0,   0,   0], dtype=np.uint8),
+    'weiss':   np.array([255, 255, 255], dtype=np.uint8),
+    'rot':     np.array([  0,   0, 255], dtype=np.uint8),
+    'gruen':   np.array([  0, 255,   0], dtype=np.uint8),
+    'blau':    np.array([255,   0,   0], dtype=np.uint8),
+    'gelb':    np.array([  0, 255, 255], dtype=np.uint8),
 }
 
 @app.route('/', methods=['GET','POST'])
 def index():
     result_url = None
-    upload_url = None  # immer initialisieren
+    upload_url = None
 
     if request.method == 'POST':
         imgfile = request.files['image']
         buf = imgfile.read()
-        # Bild einmal einlesen
         image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
 
-        # Original zwischenspeichern, damit wir es anzeigen können
+        # save upload for preview
         os.makedirs('static', exist_ok=True)
-        upload_path = os.path.join('static', 'upload.png')
+        upload_path = os.path.join('static','upload.png')
         with open(upload_path, 'wb') as f:
             f.write(buf)
         upload_url = upload_path
 
-        # Stil & Farbe auslesen
         stil  = request.form['stil']
         farbe = request.form['farbe']
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
         color  = COLORS.get(farbe, COLORS['schwarz'])
 
-        # Generieren
         canvas = style_triangle_free(
             image,
             step=params['step'],
@@ -109,8 +105,7 @@ def index():
             margin=params['margin']
         )
 
-        # Ergebnis speichern
-        out_path = os.path.join('static', 'output.png')
+        out_path = os.path.join('static','output.png')
         cv2.imwrite(out_path, canvas)
         result_url = out_path
 
@@ -119,8 +114,6 @@ def index():
         upload_url=upload_url,
         result_url=result_url
     )
-
-
 
 if __name__=='__main__':
     port = int(os.environ.get("PORT",5000))

@@ -5,24 +5,34 @@
   <title>Metallsilhouette Generator</title>
 </head>
 <body>
-  <h2>Silhouettenstil wählen</h2>
+  <h2>Metallsilhouette Generator</h2>
+
   <form action="/" method="post" enctype="multipart/form-data">
+    <label>Bild hochladen:</label><br>
     <input type="file" name="image" accept="image/*" required><br><br>
+
+    <label>Stil wählen:</label><br>
     <select name="stil" required>
-      <option value="einfach">1) Punktmuster / Locher-Stil</option>
-      <option value="linien">2) Linienmuster (Gravur-Look)</option>
-      <option value="gitter">3) Geometrische Raster / Pixel-Stil</option>
-      <option value="organisch">4) Organische Ausschnitte</option>
-      <option value="verlauf">5) Schattenriss mit Verläufen</option>
+      <option value="einfach">1) Einfache Silhouette</option>
+      <option value="glatt">2) Glatte Silhouette</option>
+      <option value="linien">3) Linienmuster</option>
+      <option value="gitter">4) Geometrisches Raster</option>
+      <option value="organisch">5) Organische Ausschnitte</option>
+      <option value="punktmuster">6) Waben-Lochmuster</option>
+      <option value="triangle_free">7) Freie Dreiecke mit Knotenpunkten</option>
     </select><br><br>
+
     <button type="submit">Generieren</button>
   </form>
 
-  {% if result_url %}
+  {% if result_png %}
     <h3>Vorschau:</h3>
-    <img src="{{ result_url }}" style="max-width:400px;"><br>
-    <a href="{{ result_url }}" download>PNG herunterladen</a><br>
-    <a href="{{ svg_url }}" download>SVG herunterladen</a>
+    <img src="{{ result_png }}" style="max-width:400px;"><br><br>
+    <a href="{{ result_png }}" download>PNG herunterladen</a><br>
+    {% if result_svg %}
+      <a href="{{ result_svg }}" download>SVG herunterladen</a><br>
+    {% endif %}
   {% endif %}
+
 </body>
 </html>

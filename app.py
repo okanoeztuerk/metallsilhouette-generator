@@ -15,8 +15,7 @@ def tri_height(side):
 
 # Core rendering function: free-form triangles with node points (PNG)
 def style_triangle_free(image, step, max_side, color, margin):
-    # Convert color np.array to tuple
-    col = (int(color[0]), int(color[1]), int(color[2]))
+    col = (int(color[0]), int(color[1]), int(color[2]))  # BGR tuple
 
     # Grayscale, contrast, invert
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -25,16 +24,15 @@ def style_triangle_free(image, step, max_side, color, margin):
     gray = cv2.bitwise_not(gray)
 
     h, w = gray.shape
-    # Mask: 255 = triangle & frame, 0 = background
     mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Generate mask of triangles
+    # Generate triangle mask
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
-            side = (1 - avg) * max_side
-            if side < 3:
+            side_len = (1 - avg) * max_side
+            if side_len < 3:
                 continue
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
@@ -42,127 +40,118 @@ def style_triangle_free(image, step, max_side, color, margin):
             pts = []
             for i in range(3):
                 theta = angle0 + i * 2*pi/3
-                px = cx + (side/2) * cos(theta)
-                py = cy + (side/2) * sin(theta)
+                px = cx + (side_len/2) * cos(theta)
+                py = cy + (side_len/2) * sin(theta)
                 pts.append((int(px), int(py)))
-            pts_np = np.array(pts, np.int32)
-            cv2.fillConvexPoly(mask, pts_np, 255)
+            cv2.fillConvexPoly(mask, np.array(pts, np.int32), 255)
 
-    # Frame in mask
-    cv2.rectangle(mask, (0, 0), (w - 1, h - 1), 255, thickness=margin)
+    # Frame mask
+    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin)
 
-    # Build colored canvas
+    # Colored canvas
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col
-    # Triangles and frame remain white
-    canvas[mask == 255] = (255, 255, 255)
+    canvas[:] = col  # background & frame color
+    canvas[mask == 255] = (255, 255, 255)  # triangles white
     return canvas
 
-# SVG renderer without node circles for performance
+# SVG renderer for free-form triangles without node circles
 def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
-    # Convert BGR to RGB for svgwrite
-    r, g, b = int(color[2]), int(color[1]), int(color[0])
-    # Preprocess
+    r, g, b = int(color[2]), int(color[1]), int(color[0])  # convert BGR to RGB
+
+    # Preprocess grayscale + invert
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
     gray = cv2.bitwise_not(gray)
     h, w = gray.shape
 
-    # Create SVG canvas with background color
     dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0,0), size=(w, h), fill=svgwrite.rgb(r, g, b, mode='RGB')))
+    # Background rectangle
+    dwg.add(dwg.rect(insert=(0, 0), size=(w, h), fill=svgwrite.rgb(r, g, b, mode='RGB')))
 
-    # Draw triangles in white
+    # Draw triangles
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
-            side = (1 - avg) * max_side
-            if side < 3:
+            side_len = (1 - avg) * max_side
+            if side_len < 3:
                 continue
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
-            ang = random.uniform(0, 2*pi)
+            angle0 = random.uniform(0, 2*pi)
             pts = []
             for i in range(3):
-                th = ang + i * 2*pi/3
-                px = cx + (side/2) * cos(th)
-                py = cy + (side/2) * sin(th)
+                theta = angle0 + i * 2*pi/3
+                px = cx + (side_len/2) * cos(theta)
+                py = cy + (side_len/2) * sin(theta)
                 pts.append((px, py))
             dwg.add(dwg.polygon(points=pts, fill='white', stroke='none'))
 
-    # Draw frame in selected color
+    # Frame in chosen color
     dwg.add(dwg.rect(insert=(margin, margin), size=(w-2*margin, h-2*margin),
-                     fill='none', stroke=svgwrite.rgb(r, g, b, mode='RGB'),
-                     stroke_width=margin))
+                     fill='none', stroke=svgwrite.rgb(r, g, b, mode='RGB'), stroke_width=margin))
     dwg.save()
 
-# Style parameters\STYLE_PARAMS = {
-    'einfach':      {'step':8,  'max_side':8,  'margin':10},
-    'glatt':        {'step':12, 'max_side':12, 'margin':12},
-    'linien':       {'step':20, 'max_side':1,  'margin':15},
-    'gitter':       {'step':18, 'max_side':15, 'margin':15},
-    'organisch':    {'step':15, 'max_side':20, 'margin':20},
-    'punktmuster':  {'step':20, 'max_side':10, 'margin':20},
-    'triangle_free':{'step':15, 'max_side':15, 'margin':30},
+# Style parameters for each option
+tSTYLE_PARAMS = {
+    'einfach':      {'step': 8,  'max_side': 8,  'margin': 10},
+    'glatt':        {'step': 12, 'max_side': 12, 'margin': 12},
+    'linien':       {'step': 20, 'max_side': 1,  'margin': 15},
+    'gitter':       {'step': 18, 'max_side': 15, 'margin': 15},
+    'organisch':    {'step': 15, 'max_side': 20, 'margin': 20},
+    'punktmuster':  {'step': 20, 'max_side': 10, 'margin': 20},
+    'triangle_free':{'step': 15, 'max_side': 15, 'margin': 30},
 }
 
-# Colors\COLORS = {
-    'schwarz': np.array([  0,   0,   0], dtype=np.uint8),
+# Color definitions (BGR)
+COLORS = {
+    'schwarz': np.array([0,   0,   0], dtype=np.uint8),
     'weiss':   np.array([255, 255, 255], dtype=np.uint8),
-    'rot':     np.array([  0,   0, 255], dtype=np.uint8),
-    'gruen':   np.array([  0, 255,   0], dtype=np.uint8),
-    'blau':    np.array([255,   0,   0], dtype=np.uint8),
-    'gelb':    np.array([  0, 255, 255], dtype=np.uint8),
+    'rot':     np.array([0,   0,   255], dtype=np.uint8),
+    'gruen':   np.array([0,   255, 0], dtype=np.uint8),
+    'blau':    np.array([255, 0,   0], dtype=np.uint8),
+    'gelb':    np.array([0,   255, 255], dtype=np.uint8),
     'mint':    np.array([189, 252, 201], dtype=np.uint8),
-    'senf':    np.array([  0, 165, 255], dtype=np.uint8),
+    'senf':    np.array([0,   165, 255], dtype=np.uint8),
 }
 
-@app.route('/', methods=['GET','POST'])
+@app.route('/', methods=['GET', 'POST'])
 def index():
     result_url = None
-    upload_url = None
     result_svg = None
+    upload_url = None
 
     if request.method == 'POST':
         imgfile = request.files['image']
         buf = imgfile.read()
         image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
 
-        # save upload for preview
         os.makedirs('static', exist_ok=True)
-        upload_path = os.path.join('static','upload.png')
+        upload_path = os.path.join('static', 'upload.png')
         with open(upload_path, 'wb') as f:
             f.write(buf)
         upload_url = upload_path
 
-        stil  = request.form['stil']
+        stil = request.form['stil']
         farbe = request.form['farbe']
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
-        color  = COLORS.get(farbe, COLORS['schwarz'])
+        color = COLORS.get(farbe, COLORS['schwarz'])
 
         canvas = style_triangle_free(
             image,
-            step=params['step'],
-            max_side=params['max_side'],
-            color=color,
-            margin=params['margin']
+            step=params['step'], max_side=params['max_side'],
+            color=color, margin=params['margin']
         )
+        out_png = os.path.join('static', 'output.png')
+        cv2.imwrite(out_png, canvas)
+        result_url = out_png
 
-        out_path = os.path.join('static','output.png')
-        cv2.imwrite(out_path, canvas)
-        result_url = out_path
-
-        # SVG
-        svg_path = os.path.join('static','output.svg')
+        svg_path = os.path.join('static', 'output.svg')
         style_triangle_free_svg(
-            image=image,
-            out_svg_path=svg_path,
-            step=params['step'],
-            max_side=params['max_side'],
-            margin=params['margin'],
-            color=color
+            image, svg_path,
+            step=params['step'], max_side=params['max_side'],
+            margin=params['margin'], color=color
         )
         result_svg = svg_path
 
@@ -173,6 +162,6 @@ def index():
         result_svg=result_svg
     )
 
-if __name__=='__main__':
-    port = int(os.environ.get("PORT",5000))
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

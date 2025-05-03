@@ -118,63 +118,66 @@ def style_density_grid(image, margin, color):
 
 def style_rectangle(image, step, max_side, color, margin):
     """
-    Erzeugt:
-    - farbigen Hintergrund + doppelt dicken Rand,
-    - feines Gitter aus weißen Quadraten (Größe ~ avg*max_side),
-    - zusätzlich ein Hintergrund-Gitter aus großen weißen Quadraten.
+    1) Farbiges Untergrund-Canvas (in 'color')
+    2) Hintergrund-Gitter aus farbigen Quadraten bei 5% Schritt
+    3) Feines Gitter-Muster aus weißen Quadraten (Größe ~ avg*max_side)
+    4) Doppelt dicker Rahmen in der gewählten Farbe
     """
-    # 0) Farbe als Tuple
+    # Farbe als Python-Tuple
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # 1) Graustufen & Kontrast
+    # 0) Graustufen & Kontrast für Detail-Muster
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
 
     h, w = gray.shape
 
-    # 2) Maske für feines Gitter (weiße Kästchen)
-    mask = np.zeros((h, w), dtype=np.uint8)
+    # 1) Farbiger Hintergrund
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = col
+
+    # 2) Hintergrund-Gitter: 5% Schritt mit farbigen Quadraten
+    cell_w = max(1, int(w * 0.05))
+    cell_h = max(1, int(h * 0.05))
+    for y in range(0, h, cell_h):
+        for x in range(0, w, cell_w):
+            # zentriertes Quadrat in jeder 5%-Zelle
+            tx = x
+            ty = y
+            bx = min(x + cell_w, w)
+            by = min(y + cell_h, h)
+            cv2.rectangle(canvas,
+                          (tx, ty),
+                          (bx, by),
+                          col,
+                          thickness=-1)
+
+    # 3) Feines Gitter-Muster aus weißen Quadraten
     for y in range(0, h, step):
         for x in range(0, w, step):
-            block = gray[y:y+step, x:x+step]
-            avg = block.mean() / 255.0
+            patch = gray[y:y+step, x:x+step]
+            avg = patch.mean() / 255.0
             side = int(avg * max_side)
             if side < 2:
                 continue
             tx = x + (step - side)//2
             ty = y + (step - side)//2
-            cv2.rectangle(mask, (tx, ty), (tx+side, ty+side), 255, -1)
-    # feines Gitter verbinden
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
-
-    # 3) Farb-Canvas erstellen
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col
-
-    # 4) Hintergrund-Gitter aus großen Quadraten
-    large_step = step * 5            # z.B. 5-facher Abstand
-    large_size = int(max_side * 3)   # z.B. 3-fache Seitenlänge
-    for y in range(0, h, large_step):
-        for x in range(0, w, large_step):
-            # zentriertes großes Quadrat
-            gx = x + (large_step - large_size)//2
-            gy = y + (large_step - large_size)//2
-            if gx < 0 or gy < 0 or gx+large_size > w or gy+large_size > h:
-                continue
             cv2.rectangle(canvas,
-                          (gx, gy),
-                          (gx+large_size, gy+large_size),
-                          (255,255,255), -1)
+                          (tx, ty),
+                          (tx+side, ty+side),
+                          (255,255,255),
+                          thickness=-1)
 
-    # 5) feines Gitter (weiße Quadrate) oben drauf
-    canvas[mask == 255] = (255,255,255)
-
-    # 6) doppelt dicker, farbiger Rahmen
-    cv2.rectangle(canvas, (0,0), (w-1,h-1), col, thickness=margin*2)
+    # 4) Doppelt dicker Rahmen in Farbe
+    cv2.rectangle(canvas,
+                  (0, 0),
+                  (w-1, h-1),
+                  col,
+                  thickness=margin*2)
 
     return canvas
+
 
 
 

@@ -1,85 +1,157 @@
 from flask import Flask, request, render_template
-import cv2, numpy as np, os, random, svgwrite
+import cv2
+import numpy as np
+import os, random
 from math import sqrt, cos, sin, pi
-from skimage import morphology
+import svgwrite
 
 app = Flask(__name__)
 
-# Helper für Dreieckshöhe
-def tri_height(side):
-    return side * sqrt(3) / 2
+# Style‐Parameter für jeden Stil
+STYLE_PARAMS = {
+    'einfach':       {'step': 8,  'max_side': 8,  'margin': 10},
+    'glatt':         {'step': 12, 'max_side': 12, 'margin': 12},
+    'linien':        {'step': 20, 'max_side': 1,  'margin': 15},
+    'gitter':        {'step': 18, 'max_side': 15, 'margin': 15},
+    'organisch':     {'step': 15, 'max_side': 20, 'margin': 20},
+    'punktmuster':   {'step': 20, 'max_side': 10, 'margin': 20},
+    'triangle_free': {'step': 15, 'max_side': 15, 'margin': 30},
+}
+
+# Farben als BGR-Arrays
+COLORS = {
+    'schwarz': np.array([  0,   0,   0], dtype=np.uint8),
+    'weiss':   np.array([255, 255, 255], dtype=np.uint8),
+    'rot':     np.array([  0,   0, 255], dtype=np.uint8),
+    'gruen':   np.array([  0, 255,   0], dtype=np.uint8),
+    'blau':    np.array([255,   0,   0], dtype=np.uint8),
+    'gelb':    np.array([  0, 255, 255], dtype=np.uint8),
+    'mint':    np.array([189, 252, 201], dtype=np.uint8),
+    'senf':    np.array([  0, 165, 255], dtype=np.uint8),
+}
 
 def style_triangle_free(image, step, max_side, color, margin):
-    # Farbe als Tuple
+    """Erzeugt freies Dreiecke-Muster mit farbigem Hintergrund+Rahmen, weißen Ausschnitten."""
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # Graustufen + Kontrast + Inversion
+    # 1) Graustufen, Histogramm, Helligkeit+Inversion
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
     gray = cv2.bitwise_not(gray)
 
     h, w = gray.shape
-    mask = np.zeros((h, w), np.uint8)
+    mask = np.zeros((h, w), dtype=np.uint8)
 
+    # 2) Maske mit Dreiecken + Knotenpunkten
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
-            avg = patch.mean()/255.0
-            side = (1-avg)*max_side
-            if side < 3: continue
+            avg = patch.mean() / 255.0
+            side = (1 - avg) * max_side
+            if side < 3:
+                continue
 
-            cx = x+step/2 + random.uniform(-step/4, step/4)
-            cy = y+step/2 + random.uniform(-step/4, step/4)
+            cx = x + step/2 + random.uniform(-step/4, step/4)
+            cy = y + step/2 + random.uniform(-step/4, step/4)
             ang = random.uniform(0, 2*pi)
             pts = []
             for i in range(3):
-                th = ang + i*2*pi/3
-                px = cx + (side/2)*cos(th)
-                py = cy + (side/2)*sin(th)
+                th = ang + i * 2*pi/3
+                px = cx + (side/2) * cos(th)
+                py = cy + (side/2) * sin(th)
                 pts.append((int(px), int(py)))
             pts_np = np.array(pts, np.int32)
             cv2.fillConvexPoly(mask, pts_np, 255)
             for (px, py) in pts:
                 cv2.circle(mask, (px, py), 2, 255, -1)
 
-    # Rahmen als weiße Maske
-    cv2.rectangle(mask, (0,0), (w-1,h-1), 255, thickness=margin*2)
+    # 3) Rahmen in Maske (weiß)
+    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin*2)
 
-    # Farb-Canvas
-    canvas = np.zeros((h, w, 3), np.uint8)
-    canvas[:] = col
-    # Dreiecke weiß
-    canvas[mask==255] = (255,255,255)
+    # 4) Farb-Canvas füllen und Ausschnitte weiß setzen
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = col                 # Hintergrund+Rahmen
+    canvas[mask == 255] = (255,255,255)  # Dreiecke & Knoten weiß
+
     return canvas
 
-# Stile & Farben unverändert ...
+def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
+    """Erzeugt das identische Muster als vektorielles SVG."""
+    # Farben BGR → RGB
+    r, g, b = int(color[2]), int(color[1]), int(color[0])
+
+    # 1) Graustufen + Inversion wie PNG
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
+    gray = cv2.bitwise_not(gray)
+    h, w = gray.shape
+
+    # 2) SVG‐Canvas
+    dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
+    # farbiger Hintergrund
+    dwg.add(dwg.rect(insert=(0,0), size=(w,h),
+                     fill=svgwrite.rgb(r,g,b,mode='RGB')))
+
+    # 3) Dreiecke + Knoten
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            patch = gray[y:y+step, x:x+step]
+            avg = patch.mean() / 255.0
+            side = (1 - avg) * max_side
+            if side < 3:
+                continue
+
+            cx = x + step/2 + random.uniform(-step/4, step/4)
+            cy = y + step/2 + random.uniform(-step/4, step/4)
+            ang = random.uniform(0, 2*pi)
+            pts = []
+            for i in range(3):
+                th = ang + i * 2*pi/3
+                px = cx + (side/2) * cos(th)
+                py = cy + (side/2) * sin(th)
+                pts.append((px, py))
+            dwg.add(dwg.polygon(points=pts, fill='white', stroke='none'))
+            # optional: Knotenpunkte als Kreise
+            # for (px, py) in pts:
+            #     dwg.add(dwg.circle(center=(px,py), r=1.5, fill='white'))
+
+    # 4) Rahmen in Farbe
+    dwg.add(dwg.rect(insert=(margin, margin),
+                     size=(w-2*margin, h-2*margin),
+                     fill='none',
+                     stroke=svgwrite.rgb(r,g,b,mode='RGB'),
+                     stroke_width=margin*2))
+    dwg.save()
 
 @app.route('/', methods=['GET','POST'])
 def index():
     upload_url = None
     result_url = None
     result_svg = None
-    stil = request.form.get('stil','einfach')
-    farbe = request.form.get('farbe','schwarz')
 
-    # Pfad für persistentes Upload
+    # immer persistent Datei-Pfad
     upload_path = os.path.join('static','upload.png')
 
-    if request.method=='POST':
+    # Stil & Farbe default (für Dropdown)
+    stil  = request.form.get('stil','einfach')
+    farbe = request.form.get('farbe','schwarz')
+
+    if request.method == 'POST':
         imgfile = request.files.get('image')
-        # wenn neue Datei hochgeladen wurde
+        # Nur neu speichern, wenn Datei gewählt
         if imgfile and imgfile.filename:
             buf = imgfile.read()
             image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
             os.makedirs('static', exist_ok=True)
-            with open(upload_path,'wb') as f:
+            with open(upload_path, 'wb') as f:
                 f.write(buf)
         else:
-            # kein neuer Upload → nutze bestehende
             image = cv2.imread(upload_path)
 
         upload_url = upload_path
+
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
         color  = COLORS.get(farbe, COLORS['schwarz'])
 
@@ -106,12 +178,15 @@ def index():
         )
         result_svg = svg_p
 
-    return render_template('index.html',
-                           upload_url=upload_url,
-                           result_url=result_url,
-                           result_svg=result_svg,
-                           stil=stil,
-                           farbe=farbe)
+    return render_template(
+        'index.html',
+        upload_url=upload_url,
+        result_url=result_url,
+        result_svg=result_svg,
+        stil=stil,
+        farbe=farbe
+    )
 
-if __name__=='__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)

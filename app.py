@@ -118,40 +118,33 @@ def style_density_grid(image, margin, color):
 
 def style_rectangle(image, step, max_side, color, margin):
     """
-    1) Farbiges Untergrund-Canvas (in 'color')
-    2) Hintergrund-Gitter aus farbigen Quadraten bei 5% Schritt
+    1) Farbiges Untergrund-Canvas in 'color'
+    2) Hintergrund-Gitter aus farbigen Quadraten (5% Schritt)
     3) Feines Gitter-Muster aus weißen Quadraten (Größe ~ avg*max_side)
     4) Doppelt dicker Rahmen in der gewählten Farbe
     """
     # Farbe als Python-Tuple
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # 0) Graustufen & Kontrast für Detail-Muster
+    # Graustufen + Kontrast für das Detail-Muster
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
 
     h, w = gray.shape
 
-    # 1) Farbiger Hintergrund
+    # 1) Hintergrund in Farbe füllen
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
     canvas[:] = col
 
-    # 2) Hintergrund-Gitter: 5% Schritt mit farbigen Quadraten
+    # 2) Grobes Hintergrund-Gitter (5% Schritt) in Farbe
     cell_w = max(1, int(w * 0.05))
     cell_h = max(1, int(h * 0.05))
     for y in range(0, h, cell_h):
         for x in range(0, w, cell_w):
-            # zentriertes Quadrat in jeder 5%-Zelle
-            tx = x
-            ty = y
             bx = min(x + cell_w, w)
             by = min(y + cell_h, h)
-            cv2.rectangle(canvas,
-                          (tx, ty),
-                          (bx, by),
-                          col,
-                          thickness=-1)
+            cv2.rectangle(canvas, (x, y), (bx, by), col, thickness=-1)
 
     # 3) Feines Gitter-Muster aus weißen Quadraten
     for y in range(0, h, step):
@@ -161,22 +154,27 @@ def style_rectangle(image, step, max_side, color, margin):
             side = int(avg * max_side)
             if side < 2:
                 continue
-            tx = x + (step - side)//2
-            ty = y + (step - side)//2
-            cv2.rectangle(canvas,
-                          (tx, ty),
-                          (tx+side, ty+side),
-                          (255,255,255),
-                          thickness=-1)
+            tx = x + (step - side) // 2
+            ty = y + (step - side) // 2
+            cv2.rectangle(
+                canvas,
+                (tx, ty),
+                (tx + side, ty + side),
+                (255, 255, 255),
+                thickness=-1
+            )
 
     # 4) Doppelt dicker Rahmen in Farbe
-    cv2.rectangle(canvas,
-                  (0, 0),
-                  (w-1, h-1),
-                  col,
-                  thickness=margin*2)
+    cv2.rectangle(
+        canvas,
+        (0, 0),
+        (w - 1, h - 1),
+        col,
+        thickness=margin * 2
+    )
 
     return canvas
+
 
 
 

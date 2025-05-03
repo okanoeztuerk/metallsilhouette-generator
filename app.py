@@ -66,42 +66,49 @@ def style_triangle_free(image, step, max_side, color, margin):
 
 def style_rectangle(image, step, max_side, color, margin):
     """
-    Erzeugt ein Gitter aus weißen Quadraten auf farbigem Hintergrund+Rahmen.
-    step: Rasterabstand, max_side: max. Quadrat-Seitenlänge
+    Erzeugt ein verbundenes Gitter aus weißen Quadraten:
+    - step: Rasterabstand
+    - max_side: max. Quadrat-Seitenlänge bei voller Helligkeit
+    - margin: Rahmenbreite (doppelt so dick)
     """
+    # Farbe als Python-Tuple
     col = (int(color[0]), int(color[1]), int(color[2]))
+
+    # 1) Graustufen & Kontrast
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-    gray = cv2.bitwise_not(gray)
+
     h, w = gray.shape
 
-    # Canvas: farbiger Hintergrund
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col
-
-    # Zeichne Raster aus weißen Quadraten
+    # 2) Maske für weißes Gitter
+    mask = np.zeros((h, w), dtype=np.uint8)
     for y in range(0, h, step):
         for x in range(0, w, step):
-            patch = gray[y:y+step, x:x+step]
-            avg = patch.mean() / 255.0
-            side = int((1 - avg) * max_side)
-            if side < 2: continue
-            # zentriere Quadrat in der Zelle
-            tx = int(x + (step - side)/2)
-            ty = int(y + (step - side)/2)
-            cv2.rectangle(canvas,
-                          (tx, ty),
-                          (tx+side, ty+side),
-                          (255, 255, 255),
-                          thickness=-1)
-    # Rahmen am Rand (doppelte Breite)
-    cv2.rectangle(canvas,
-                  (0, 0),
-                  (w-1, h-1),
-                  col,
-                  thickness=margin*2)
+            block = gray[y:y+step, x:x+step]
+            avg = block.mean() / 255.0     # 0=schwarz .. 1=weiß
+            side = int(avg * max_side)     # helle Flächen → große Quadrate
+            if side < 2:
+                continue
+            # Quadrat zentriert in Zelle
+            tx = x + (step - side) // 2
+            ty = y + (step - side) // 2
+            cv2.rectangle(mask, (tx, ty), (tx+side, ty+side), 255, thickness=-1)
+
+    # 3) Verbinden: Morphologisches Closing schließt Lücken
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    # 4) Farb-Canvas mit Rahmen
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = col  # Hintergrund + Rahmen-Farbe
+    canvas[mask == 255] = (255, 255, 255)  # Quadrate bleiben weiß
+
+    # 5) Doppelt dicker Rahmen um das Bild
+    cv2.rectangle(canvas, (0, 0), (w-1, h-1), col, thickness=margin*2)
+
     return canvas
+
 
 def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
     r, g, b = int(color[2]), int(color[1]), int(color[0])

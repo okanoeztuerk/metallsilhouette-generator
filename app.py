@@ -32,6 +32,65 @@ COLORS = {
     'senf':    np.array([  0, 165, 255], dtype=np.uint8),
 }
 
+def style_biene(image, margin, color):
+    """
+    1) Stark kontrastiertes B/W (Otsu nach Belichtung)
+    2) Lückenloses Hexagon-Gitter (Zellgröße = 5% des Bildes) in Schwarz
+    3) Doppelt dicker Rahmen in 'color'
+    """
+    # 1) Schwarz-Weiß + Belichtung
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=50)
+    _, bw = cv2.threshold(gray, 0, 255,
+                         cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    # Canvas (B/W → BGR)
+    canvas = cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR)
+    h, w = bw.shape
+
+    # 2) Hexagon-Raster ohne Lücken
+    # Zellgröße = 5% der kleineren Dimension
+    cell = max(1, int(min(w, h) * 0.05))
+    # Hexagon-Höhe
+    hex_h = cell * math.sqrt(3) / 2
+
+    # Schwarze Linien
+    line_color = (0, 0, 0)
+    thickness = 2
+
+    # Wir beginnen in der linken oberen Ecke und füllen lückenlos
+    # zwei verschachtelte Schleifen, sodass die Hexen sich berühren
+    rows = int(math.ceil(h / (hex_h)))
+    cols = int(math.ceil(w / (cell * 0.75)))
+
+    for row in range(rows + 1):
+        for col in range(cols + 1):
+            # Versatz für jede zweite Spalte
+            x = int(col * cell * 0.75)
+            y = int(row * hex_h + (col % 2) * (hex_h / 2))
+
+            # Eckpunkte des Hexagons
+            pts = []
+            for i in range(6):
+                angle = math.pi/6 + i * math.pi/3
+                px = x + cell * math.cos(angle)
+                py = y + cell * math.sin(angle)
+                pts.append((int(px), int(py)))
+            pts_np = np.array(pts, np.int32).reshape((-1,1,2))
+            cv2.polylines(canvas, [pts_np], True, line_color,
+                          thickness=thickness, lineType=cv2.LINE_AA)
+
+    # 3) Doppelt dicker Rahmen in Farbe
+    col = (int(color[0]), int(color[1]), int(color[2]))
+    cv2.rectangle(canvas,
+                  (0, 0),
+                  (w-1, h-1),
+                  col,
+                  thickness=margin * 2)
+
+    return canvas
+    
 def style_triangle_free(image, step, max_side, color, margin):
     col = (int(color[0]), int(color[1]), int(color[2]))
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -248,6 +307,12 @@ def index():
             )
         elif stil == 'vierreck2':
             canvas = style_density_grid(
+                image,
+                margin=params['margin'],
+                color=color
+            )
+        elif stil == 'biene':
+            canvas = style_biene(
                 image,
                 margin=params['margin'],
                 color=color

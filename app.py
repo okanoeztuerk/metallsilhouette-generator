@@ -17,6 +17,7 @@ STYLE_PARAMS = {
     'punktmuster':   {'step': 20, 'max_side': 10, 'margin': 20},
     'triangle_free': {'step': 15, 'max_side': 15, 'margin': 30},
     'vierreck':      {'step': 15, 'max_side': 15, 'margin': 30},  # neue Option
+    'vierreck2':      {'step': 15, 'max_side': 15, 'margin': 30},  # neue Option
 }
 
 # Farben als BGR-Arrays
@@ -62,6 +63,61 @@ def style_triangle_free(image, step, max_side, color, margin):
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
     canvas[:] = col
     canvas[mask == 255] = (255,255,255)
+    return canvas
+
+
+def style_density_grid(image, margin, color):
+    """
+    Teilt das Bild in 2%-Zellen, jede Zelle in 3×3 Sub-Quadrate.
+    Helle Zellen → 1 gefülltes Sub-Quadrat, dunkle → bis zu 8.
+    margin: Breite des Rahmens (px, wird am Rand in Farbe gezeichnet)
+    color: BGR-Farb-Tuple für Hintergrund und Rahmen
+    """
+    h, w = image.shape[:2]
+    # Graustufen + Kontrast
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    
+    # Zellgröße: 2%  
+    cell_w = max(1, int(w * 0.02))
+    cell_h = max(1, int(h * 0.02))
+    # Subdivision 3×3
+    sub_w = cell_w // 3
+    sub_h = cell_h // 3
+
+    # Canvas: farbiger Hintergrund + Rahmen
+    canvas = np.zeros((h, w, 3), np.uint8)
+    canvas[:] = color
+    # Großer Rahmen in Farbe
+    cv2.rectangle(canvas, (0,0), (w-1,h-1), color, thickness=margin)
+
+    for y0 in range(margin, h-margin, cell_h):
+        for x0 in range(margin, w-margin, cell_w):
+            # Mittelwert der Helligkeit der Zelle
+            patch = gray[y0:y0+cell_h, x0:x0+cell_w]
+            if patch.size == 0: continue
+            avg = patch.mean() / 255.0  # 0 (schwarz) .. 1 (weiß)
+
+            # Bestimme, wie viele Sub-Quadrate gefüllt werden sollen
+            # hell=1, dunkel=8
+            count = int((1 - avg) * 7) + 1  # Wert 1..8
+
+            # Erzeuge Liste aller 9 Sub-Quadrat-Koordinaten
+            subs = []
+            for i in range(3):
+                for j in range(3):
+                    sx = x0 + j * sub_w
+                    sy = y0 + i * sub_h
+                    subs.append((sx, sy))
+
+            # Wähle zufällig `count` Sub-Quadrate aus
+            fill = random.sample(subs, count)
+            for sx, sy in fill:
+                cv2.rectangle(canvas,
+                              (sx, sy),
+                              (sx+sub_w, sy+sub_h),
+                              (255,255,255),  # weißes Quadrat
+                              thickness=-1)
     return canvas
 
 def style_rectangle(image, step, max_side, color, margin):
@@ -176,6 +232,8 @@ def index():
                 color=color,
                 margin=params['margin']
             )
+        else if stil == 'vierreck2':
+        canvas = style_density_grid(image, margin=params['margin'], color=color)
         else:
             canvas = style_triangle_free(
                 image,

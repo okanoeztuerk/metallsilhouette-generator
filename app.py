@@ -119,21 +119,21 @@ def style_density_grid(image, margin, color):
 def style_rectangle(image, step, max_side, color, margin):
     """
     1) Farbiges Untergrund-Canvas in 'color'
-    2) Hintergrund-Gitter aus farbigen Quadraten (5% Schritt)
+    2) Grobes Hintergrund-Gitter aus farbigen Quadraten (5% Schritt)
     3) Feines Gitter-Muster aus weißen Quadraten (Größe ~ avg*max_side)
     4) Doppelt dicker Rahmen in der gewählten Farbe
     """
     # Farbe als Python-Tuple
     col = (int(color[0]), int(color[1]), int(color[2]))
 
-    # Graustufen + Kontrast für das Detail-Muster
+    # Graustufen + Kontrast fürs Detail-Muster
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
 
     h, w = gray.shape
 
-    # 1) Hintergrund in Farbe füllen
+    # 1) Farbiger Hintergrund
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
     canvas[:] = col
 
@@ -144,6 +144,7 @@ def style_rectangle(image, step, max_side, color, margin):
         for x in range(0, w, cell_w):
             bx = min(x + cell_w, w)
             by = min(y + cell_h, h)
+            # Hier wird in Hintergrund-Farbe über das Canvas gemalt
             cv2.rectangle(canvas, (x, y), (bx, by), col, thickness=-1)
 
     # 3) Feines Gitter-Muster aus weißen Quadraten

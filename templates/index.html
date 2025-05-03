@@ -4,64 +4,68 @@
   <meta charset="utf-8">
   <title>Metallsilhouette Generator</title>
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    img { border: 1px solid #ccc; margin-bottom: 10px; }
-    select, input[type="file"], button { margin-top: 5px; }
+    body { font-family: sans-serif; padding: 20px; }
+    form > * { display: block; margin: 10px 0; }
+    img { border: 1px solid #ccc; max-width: 400px; }
+    .downloads a { margin-right: 10px; }
   </style>
 </head>
 <body>
-  <h2>Metallsilhouette Generator</h2>
+  <h1>Metallsilhouette Generator</h1>
 
   <form action="/" method="post" enctype="multipart/form-data">
-    <!-- Bild-Upload -->
-    <label for="image">1) Bild hochladen:</label><br>
-    <input type="file" id="image" name="image" accept="image/*" required><br>
+    <!-- Bild-Upload bleibt optional -->
+    <label>1) Bild hochladen:</label>
+    <input type="file" name="image" accept="image/*">
 
-    <!-- Stil-Auswahl -->
-    <label for="stil">2) Stil wählen:</label><br>
-    <select id="stil" name="stil" required>
-      <option value="einfach">Einfache Silhouette</option>
-      <option value="glatt">Glatte Silhouette</option>
-      <option value="linien">Linienmuster</option>
-      <option value="gitter">Geometrisches Raster</option>
-      <option value="organisch">Organische Ausschnitte</option>
-      <option value="punktmuster">Waben-Lochmuster</option>
-      <option value="triangle_free">Freie Dreiecke</option>
-    </select><br>
+    <!-- Stil mit Auswahl bestehen lassen -->
+    <label>2) Stil wählen:</label>
+    <select name="stil">
+      <option value="einfach"    {% if stil=='einfach' %}selected{% endif %}>Einfache Silhouette</option>
+      <option value="glatt"      {% if stil=='glatt'   %}selected{% endif %}>Glatte Silhouette</option>
+      <option value="linien"     {% if stil=='linien'  %}selected{% endif %}>Linienmuster</option>
+      <option value="gitter"     {% if stil=='gitter'  %}selected{% endif %}>Geometrisches Raster</option>
+      <option value="organisch"  {% if stil=='organisch'%}selected{% endif %}>Organische Ausschnitte</option>
+      <option value="punktmuster"{% if stil=='punktmuster'%}selected{% endif %}>Waben-Lochmuster</option>
+      <option value="triangle_free"{% if stil=='triangle_free'%}selected{% endif %}>Freie Dreiecke</option>
+    </select>
 
-    <!-- Farb-Auswahl -->
-    <label for="farbe">3) Farbe wählen:</label><br>
-    <select id="farbe" name="farbe" required>
-      <option value="schwarz">Schwarz</option>
-      <option value="weiss">Weiß</option>
-      <option value="rot">Rot</option>
-      <option value="gruen">Grün</option>
-      <option value="blau">Blau</option>
-      <option value="gelb">Gelb</option>
-      <option value="mint">Mint</option>
-      <option value="senf">Senf</option>
-    </select><br><br>
+    <!-- Farbe mit Auswahl bestehen lassen -->
+    <label>3) Farbe wählen:</label>
+    <select name="farbe">
+      <option value="schwarz"{% if farbe=='schwarz' %}selected{% endif %}>Schwarz</option>
+      <option value="weiss"  {% if farbe=='weiss'   %}selected{% endif %}>Weiß</option>
+      <option value="rot"    {% if farbe=='rot'     %}selected{% endif %}>Rot</option>
+      <option value="gruen"  {% if farbe=='gruen'   %}selected{% endif %}>Grün</option>
+      <option value="blau"   {% if farbe=='blau'    %}selected{% endif %}>Blau</option>
+      <option value="gelb"   {% if farbe=='gelb'    %}selected{% endif %}>Gelb</option>
+      <option value="mint"   {% if farbe=='mint'    %}selected{% endif %}>Mint</option>
+      <option value="senf"   {% if farbe=='senf'    %}selected{% endif %}>Senf</option>
+    </select>
 
     <button type="submit">Generieren</button>
   </form>
 
-  <!-- Vorschau hochgeladenes Bild -->
-  {% if upload_url %}
-    <h3>Hochgeladenes Bild:</h3>
-    <img src="{{ upload_url }}" alt="Original Upload" style="max-width: 400px;"><br>
-  {% endif %}
+  <div class="preview">
+    {% if upload_url %}
+      <h2>Hochgeladenes Bild</h2>
+      <img src="{{ upload_url }}" alt="Original">
+    {% endif %}
 
-  <!-- Ergebnis-Vorschau -->
-  {% if result_url or result_svg %}
-    <h3>Ergebnis:</h3>
     {% if result_url %}
-      <img src="{{ result_url }}" alt="Silhouette PNG" style="max-width: 400px;"><br>
-      <a href="{{ result_url }}" download>PNG herunterladen</a><br>
+      <h2>Silhouette (PNG)</h2>
+      <img src="{{ result_url }}" alt="PNG">
+      <div class="downloads">
+        <a href="{{ result_url }}" download>PNG herunterladen</a>
+      </div>
     {% endif %}
-    {% if result_svg %}
-      <a href="{{ result_svg }}" download>SVG herunterladen</a><br>
-    {% endif %}
-  {% endif %}
 
+    {% if result_svg %}
+      <h2>Silhouette (SVG)</h2>
+      <div class="downloads">
+        <a href="{{ result_svg }}" download>SVG herunterladen</a>
+      </div>
+    {% endif %}
+  </div>
 </body>
 </html>

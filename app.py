@@ -223,7 +223,7 @@ def index():
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
         color  = COLORS.get(farbe, COLORS['schwarz'])
 
-        # wähle Funktion je nach Stil
+        # Auswahl der richtigen Render-Funktion
         if stil == 'vierreck':
             canvas = style_rectangle(
                 image,
@@ -232,8 +232,12 @@ def index():
                 color=color,
                 margin=params['margin']
             )
-        else if stil == 'vierreck2':
-        canvas = style_density_grid(image, margin=params['margin'], color=color)
+        elif stil == 'vierreck2':
+            canvas = style_density_grid(
+                image,
+                margin=params['margin'],
+                color=color
+            )
         else:
             canvas = style_triangle_free(
                 image,
@@ -243,15 +247,17 @@ def index():
                 margin=params['margin']
             )
 
+        # PNG speichern
         out_png = os.path.join('static','output.png')
         cv2.imwrite(out_png, canvas)
         result_url = out_png
 
-        # SVG nur für triangle_free, rechteckiges Gitter als PNG
+        # SVG nur für triangle_free
         if stil == 'triangle_free':
             svg_p = os.path.join('static','output.svg')
             style_triangle_free_svg(
-                image, svg_p,
+                image,
+                svg_p,
                 step=params['step'],
                 max_side=params['max_side'],
                 margin=params['margin'],
@@ -265,6 +271,7 @@ def index():
                            result_svg=result_svg,
                            stil=stil,
                            farbe=farbe)
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))

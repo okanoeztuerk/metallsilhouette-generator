@@ -16,6 +16,7 @@ STYLE_PARAMS = {
     'organisch':     {'step': 15, 'max_side': 20, 'margin': 20},
     'punktmuster':   {'step': 20, 'max_side': 10, 'margin': 20},
     'triangle_free': {'step': 15, 'max_side': 15, 'margin': 30},
+    'vierreck':      {'step': 15, 'max_side': 15, 'margin': 30},  # neue Option
 }
 
 # Farben als BGR-Arrays
@@ -31,27 +32,19 @@ COLORS = {
 }
 
 def style_triangle_free(image, step, max_side, color, margin):
-    """Erzeugt freies Dreiecke-Muster mit farbigem Hintergrund+Rahmen, weißen Ausschnitten."""
     col = (int(color[0]), int(color[1]), int(color[2]))
-
-    # 1) Graustufen, Histogramm, Helligkeit+Inversion
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
     gray = cv2.bitwise_not(gray)
-
     h, w = gray.shape
     mask = np.zeros((h, w), dtype=np.uint8)
-
-    # 2) Maske mit Dreiecken + Knotenpunkten
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
             side = (1 - avg) * max_side
-            if side < 3:
-                continue
-
+            if side < 3: continue
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
             ang = random.uniform(0, 2*pi)
@@ -65,59 +58,77 @@ def style_triangle_free(image, step, max_side, color, margin):
             cv2.fillConvexPoly(mask, pts_np, 255)
             for (px, py) in pts:
                 cv2.circle(mask, (px, py), 2, 255, -1)
-
-    # 3) Rahmen in Maske (weiß)
     cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin*2)
-
-    # 4) Farb-Canvas füllen und Ausschnitte weiß setzen
     canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col                 # Hintergrund+Rahmen
-    canvas[mask == 255] = (255,255,255)  # Dreiecke & Knoten weiß
-
+    canvas[:] = col
+    canvas[mask == 255] = (255,255,255)
     return canvas
 
-def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
-    """Erzeugt das identische Muster als vektorielles SVG."""
-    # Farben BGR → RGB
-    r, g, b = int(color[2]), int(color[1]), int(color[0])
-
-    # 1) Graustufen + Inversion wie PNG
+def style_rectangle(image, step, max_side, color, margin):
+    """
+    Erzeugt ein Gitter aus weißen Quadraten auf farbigem Hintergrund+Rahmen.
+    step: Rasterabstand, max_side: max. Quadrat-Seitenlänge
+    """
+    col = (int(color[0]), int(color[1]), int(color[2]))
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
     gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
     gray = cv2.bitwise_not(gray)
     h, w = gray.shape
 
-    # 2) SVG‐Canvas
-    dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
-    # farbiger Hintergrund
-    dwg.add(dwg.rect(insert=(0,0), size=(w,h),
-                     fill=svgwrite.rgb(r,g,b,mode='RGB')))
+    # Canvas: farbiger Hintergrund
+    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+    canvas[:] = col
 
-    # 3) Dreiecke + Knoten
+    # Zeichne Raster aus weißen Quadraten
     for y in range(0, h, step):
         for x in range(0, w, step):
             patch = gray[y:y+step, x:x+step]
             avg = patch.mean() / 255.0
-            side = (1 - avg) * max_side
-            if side < 3:
-                continue
+            side = int((1 - avg) * max_side)
+            if side < 2: continue
+            # zentriere Quadrat in der Zelle
+            tx = int(x + (step - side)/2)
+            ty = int(y + (step - side)/2)
+            cv2.rectangle(canvas,
+                          (tx, ty),
+                          (tx+side, ty+side),
+                          (255, 255, 255),
+                          thickness=-1)
+    # Rahmen am Rand (doppelte Breite)
+    cv2.rectangle(canvas,
+                  (0, 0),
+                  (w-1, h-1),
+                  col,
+                  thickness=margin*2)
+    return canvas
 
+def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
+    r, g, b = int(color[2]), int(color[1]), int(color[0])
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
+    gray = cv2.bitwise_not(gray)
+    h, w = gray.shape
+    dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
+    dwg.add(dwg.rect(insert=(0,0), size=(w,h),
+                     fill=svgwrite.rgb(r,g,b,mode='RGB')))
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            patch = gray[y:y+step, x:x+step]
+            avg = patch.mean()/255.0
+            side = (1 - avg)*max_side
+            if side < 3: continue
             cx = x + step/2 + random.uniform(-step/4, step/4)
             cy = y + step/2 + random.uniform(-step/4, step/4)
             ang = random.uniform(0, 2*pi)
             pts = []
             for i in range(3):
                 th = ang + i * 2*pi/3
-                px = cx + (side/2) * cos(th)
-                py = cy + (side/2) * sin(th)
+                px = cx + (side/2)*cos(th)
+                py = cy + (side/2)*sin(th)
                 pts.append((px, py))
             dwg.add(dwg.polygon(points=pts, fill='white', stroke='none'))
-            # optional: Knotenpunkte als Kreise
-            # for (px, py) in pts:
-            #     dwg.add(dwg.circle(center=(px,py), r=1.5, fill='white'))
-
-    # 4) Rahmen in Farbe
     dwg.add(dwg.rect(insert=(margin, margin),
                      size=(w-2*margin, h-2*margin),
                      fill='none',
@@ -130,63 +141,65 @@ def index():
     upload_url = None
     result_url = None
     result_svg = None
-
-    # immer persistent Datei-Pfad
     upload_path = os.path.join('static','upload.png')
-
-    # Stil & Farbe default (für Dropdown)
     stil  = request.form.get('stil','einfach')
     farbe = request.form.get('farbe','schwarz')
 
     if request.method == 'POST':
         imgfile = request.files.get('image')
-        # Nur neu speichern, wenn Datei gewählt
         if imgfile and imgfile.filename:
             buf = imgfile.read()
             image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
             os.makedirs('static', exist_ok=True)
-            with open(upload_path, 'wb') as f:
+            with open(upload_path,'wb') as f:
                 f.write(buf)
         else:
             image = cv2.imread(upload_path)
 
         upload_url = upload_path
-
         params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
         color  = COLORS.get(farbe, COLORS['schwarz'])
 
-        # PNG
-        canvas = style_triangle_free(
-            image,
-            step=params['step'],
-            max_side=params['max_side'],
-            color=color,
-            margin=params['margin']
-        )
+        # wähle Funktion je nach Stil
+        if stil == 'vierreck':
+            canvas = style_rectangle(
+                image,
+                step=params['step'],
+                max_side=params['max_side'],
+                color=color,
+                margin=params['margin']
+            )
+        else:
+            canvas = style_triangle_free(
+                image,
+                step=params['step'],
+                max_side=params['max_side'],
+                color=color,
+                margin=params['margin']
+            )
+
         out_png = os.path.join('static','output.png')
         cv2.imwrite(out_png, canvas)
         result_url = out_png
 
-        # SVG
-        svg_p = os.path.join('static','output.svg')
-        style_triangle_free_svg(
-            image, svg_p,
-            step=params['step'],
-            max_side=params['max_side'],
-            margin=params['margin'],
-            color=color
-        )
-        result_svg = svg_p
+        # SVG nur für triangle_free, rechteckiges Gitter als PNG
+        if stil == 'triangle_free':
+            svg_p = os.path.join('static','output.svg')
+            style_triangle_free_svg(
+                image, svg_p,
+                step=params['step'],
+                max_side=params['max_side'],
+                margin=params['margin'],
+                color=color
+            )
+            result_svg = svg_p
 
-    return render_template(
-        'index.html',
-        upload_url=upload_url,
-        result_url=result_url,
-        result_svg=result_svg,
-        stil=stil,
-        farbe=farbe
-    )
+    return render_template('index.html',
+                           upload_url=upload_url,
+                           result_url=result_url,
+                           result_svg=result_svg,
+                           stil=stil,
+                           farbe=farbe)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))

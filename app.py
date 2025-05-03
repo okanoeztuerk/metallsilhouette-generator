@@ -70,54 +70,50 @@ def style_density_grid(image, margin, color):
     """
     Teilt das Bild in 2%-Zellen, jede Zelle in 3×3 Sub-Quadrate.
     Helle Zellen → 1 gefülltes Sub-Quadrat, dunkle → bis zu 8.
-    margin: Breite des Rahmens (px, wird am Rand in Farbe gezeichnet)
-    color: BGR-Farb-Tuple für Hintergrund und Rahmen
+    margin: Breite des Rahmens (px)
+    color: np.array([B, G, R])
     """
+    # 0) Farbe in Python-Tuple verwandeln
+    col = (int(color[0]), int(color[1]), int(color[2]))
+
+    # 1) Graustufen + Kontrast
     h, w = image.shape[:2]
-    # Graustufen + Kontrast
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.equalizeHist(gray)
-    
-    # Zellgröße: 2%  
+
+    # Zellgröße: 2%
     cell_w = max(1, int(w * 0.02))
     cell_h = max(1, int(h * 0.02))
-    # Subdivision 3×3
     sub_w = cell_w // 3
     sub_h = cell_h // 3
 
-    # Canvas: farbiger Hintergrund + Rahmen
+    # 2) Canvas: farbiger Hintergrund + Rahmen
     canvas = np.zeros((h, w, 3), np.uint8)
-    canvas[:] = color
-    # Großer Rahmen in Farbe
-    cv2.rectangle(canvas, (0,0), (w-1,h-1), color, thickness=margin)
+    canvas[:] = col
+    # Rahmen in Farbe
+    cv2.rectangle(canvas, (0, 0), (w-1, h-1), col, thickness=margin)
 
+    # 3) Sub-Quadrate je nach Helligkeit
     for y0 in range(margin, h-margin, cell_h):
         for x0 in range(margin, w-margin, cell_w):
-            # Mittelwert der Helligkeit der Zelle
             patch = gray[y0:y0+cell_h, x0:x0+cell_w]
-            if patch.size == 0: continue
-            avg = patch.mean() / 255.0  # 0 (schwarz) .. 1 (weiß)
+            if patch.size == 0:
+                continue
+            avg = patch.mean() / 255.0   # 0..1
+            count = int((1 - avg) * 7) + 1   # 1..8
 
-            # Bestimme, wie viele Sub-Quadrate gefüllt werden sollen
-            # hell=1, dunkel=8
-            count = int((1 - avg) * 7) + 1  # Wert 1..8
-
-            # Erzeuge Liste aller 9 Sub-Quadrat-Koordinaten
-            subs = []
-            for i in range(3):
-                for j in range(3):
-                    sx = x0 + j * sub_w
-                    sy = y0 + i * sub_h
-                    subs.append((sx, sy))
-
-            # Wähle zufällig `count` Sub-Quadrate aus
+            # alle 9 Sub-Zellen sammeln
+            subs = [(x0 + j*sub_w, y0 + i*sub_h) for i in range(3) for j in range(3)]
             fill = random.sample(subs, count)
             for sx, sy in fill:
-                cv2.rectangle(canvas,
-                              (sx, sy),
-                              (sx+sub_w, sy+sub_h),
-                              (255,255,255),  # weißes Quadrat
-                              thickness=-1)
+                cv2.rectangle(
+                    canvas,
+                    (sx, sy),
+                    (sx+sub_w, sy+sub_h),
+                    (255,255,255),  # die Quadrate bleiben weiß
+                    thickness=-1
+                )
+
     return canvas
 
 def style_rectangle(image, step, max_side, color, margin):

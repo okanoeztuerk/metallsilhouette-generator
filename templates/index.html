@@ -1,74 +1,28 @@
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <title>Metallsilhouette Generator</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    form > * { display: block; margin: 10px 0; }
-    img { border: 1px solid #ccc; max-width: 400px; }
-    .downloads a { margin-right: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Punktgrafik Generator</title>
+    <style>
+        body { font-family: sans-serif; background: #111; color: #eee; text-align: center; padding: 40px; }
+        input[type=file], button { margin: 10px; padding: 10px; }
+        img { max-width: 90%%; margin-top: 20px; border: 1px solid #555; }
+        a { color: #0f0; display: block; margin-top: 10px; font-weight: bold; }
+    </style>
 </head>
 <body>
-  <h1>Metallsilhouette Generator</h1>
+    <h1>Punktgrafik-Generator</h1>
+    <form method="POST" action="/generate" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required><br>
+        <button type="submit">Generieren</button>
+    </form>
 
-  <form action="/" method="post" enctype="multipart/form-data">
-    <!-- Bild-Upload bleibt optional -->
-    <label>1) Bild hochladen:</label>
-    <input type="file" name="image" accept="image/*">
-
-    <!-- Stil mit Auswahl bestehen lassen -->
-    <label>2) Stil wählen:</label>
-    <select name="stil">
-      <option value="einfach"    {% if stil=='einfach' %}selected{% endif %}>Einfache Silhouette</option>
-      <option value="glatt"      {% if stil=='glatt'   %}selected{% endif %}>Glatte Silhouette</option>
-      <option value="linien"     {% if stil=='linien'  %}selected{% endif %}>Linienmuster</option>
-      <option value="gitter"     {% if stil=='gitter'  %}selected{% endif %}>Geometrisches Raster</option>
-      <option value="organisch"  {% if stil=='organisch'%}selected{% endif %}>Organische Ausschnitte</option>
-      <option value="punktmuster"{% if stil=='punktmuster'%}selected{% endif %}>Waben-Lochmuster</option>
-      <option value="triangle_free"{% if stil=='triangle_free'%}selected{% endif %}>Freie Dreiecke</option>
-      <option value="vierreck"{% if stil=='vierreck'%}selected{% endif %}>Viereck</option>
-      <option value="vierreck2"{% if stil=='vierreck'%}selected{% endif %}>Viereck2</option>
-      <option value="biene"{% if stil=='vierreck'%}selected{% endif %}>biene</option>
-    </select>
-
-    <!-- Farbe mit Auswahl bestehen lassen -->
-    <label>3) Farbe wählen:</label>
-    <select name="farbe">
-      <option value="schwarz"{% if farbe=='schwarz' %}selected{% endif %}>Schwarz</option>
-      <option value="weiss"  {% if farbe=='weiss'   %}selected{% endif %}>Weiß</option>
-      <option value="rot"    {% if farbe=='rot'     %}selected{% endif %}>Rot</option>
-      <option value="gruen"  {% if farbe=='gruen'   %}selected{% endif %}>Grün</option>
-      <option value="blau"   {% if farbe=='blau'    %}selected{% endif %}>Blau</option>
-      <option value="gelb"   {% if farbe=='gelb'    %}selected{% endif %}>Gelb</option>
-      <option value="mint"   {% if farbe=='mint'    %}selected{% endif %}>Mint</option>
-      <option value="senf"   {% if farbe=='senf'    %}selected{% endif %}>Senf</option>
-    </select>
-
-    <button type="submit">Generieren</button>
-  </form>
-
-  <div class="preview">
-    {% if upload_url %}
-      <h2>Hochgeladenes Bild</h2>
-      <img src="{{ upload_url }}" alt="Original">
+    {% if result %}
+    <h2>Ergebnis</h2>
+    <img src="{{ url_for('static', filename='output.png') }}" alt="PNG Ergebnis"><br>
+    <a href="{{ url_for('static', filename='output.png') }}" download>PNG herunterladen</a>
+    <a href="{{ url_for('static', filename='output.svg') }}" download>SVG herunterladen</a>
     {% endif %}
-
-    {% if result_url %}
-      <h2>Silhouette (PNG)</h2>
-      <img src="{{ result_url }}" alt="PNG">
-      <div class="downloads">
-        <a href="{{ result_url }}" download>PNG herunterladen</a>
-      </div>
-    {% endif %}
-
-    {% if result_svg %}
-      <h2>Silhouette (SVG)</h2>
-      <div class="downloads">
-        <a href="{{ result_svg }}" download>SVG herunterladen</a>
-      </div>
-    {% endif %}
-  </div>
 </body>
 </html>

@@ -1,356 +1,83 @@
-from flask import Flask, request, render_template
+
+import os
 import cv2
 import numpy as np
-import os, random
-from math import sqrt, cos, sin, pi
+from flask import Flask, render_template, request, redirect, url_for
+from PIL import Image, ImageDraw
 import svgwrite
 
 app = Flask(__name__)
 
-# Style‐Parameter für jeden Stil
-STYLE_PARAMS = {
-    'einfach':       {'step': 8,  'max_side': 8,  'margin': 10},
-    'glatt':         {'step': 12, 'max_side': 12, 'margin': 12},
-    'linien':        {'step': 20, 'max_side': 1,  'margin': 15},
-    'gitter':        {'step': 18, 'max_side': 15, 'margin': 15},
-    'organisch':     {'step': 15, 'max_side': 20, 'margin': 20},
-    'punktmuster':   {'step': 20, 'max_side': 10, 'margin': 20},
-    'triangle_free': {'step': 15, 'max_side': 15, 'margin': 30},
-    'vierreck':      {'step': 15, 'max_side': 15, 'margin': 30},  # neue Option
-    'vierreck2':      {'step': 15, 'max_side': 15, 'margin': 30},  # neue Option
-}
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html", result=False)
 
-# Farben als BGR-Arrays
-COLORS = {
-    'schwarz': np.array([  0,   0,   0], dtype=np.uint8),
-    'weiss':   np.array([255, 255, 255], dtype=np.uint8),
-    'rot':     np.array([  0,   0, 255], dtype=np.uint8),
-    'gruen':   np.array([  0, 255,   0], dtype=np.uint8),
-    'blau':    np.array([255,   0,   0], dtype=np.uint8),
-    'gelb':    np.array([  0, 255, 255], dtype=np.uint8),
-    'mint':    np.array([189, 252, 201], dtype=np.uint8),
-    'senf':    np.array([  0, 165, 255], dtype=np.uint8),
-}
+@app.route("/generate", methods=["POST"])
+def generate():
+    file = request.files["image"]
+    path = "static/upload.jpg"
+    file.save(path)
 
-def style_biene(image, margin, color):
-    """
-    1) Stark kontrastiertes B/W (Otsu nach Belichtung)
-    2) Lückenloses Hexagon-Gitter (Zellgröße = 5% des Bildes) in Schwarz
-    3) Doppelt dicker Rahmen in 'color'
-    """
-    # 1) Schwarz-Weiß + Belichtung
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=50)
-    _, bw = cv2.threshold(gray, 0, 255,
-                         cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    image_bgr = cv2.imread(path)
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    image_resized = cv2.resize(image_rgb, (512, int(image_rgb.shape[0] * 512 / image_rgb.shape[1])))
+    lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
+    pixels = lab.reshape((-1, 3)).astype(np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0)
+    _, labels, centers = cv2.kmeans(pixels, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+    segmented_img = labels.flatten().reshape((image_resized.shape[:2]))
 
-    # Canvas (B/W → BGR)
-    canvas = cv2.cvtColor(bw, cv2.COLOR_GRAY2BGR)
-    h, w = bw.shape
+    mask = np.zeros_like(segmented_img, dtype=np.uint8)
+    for i, c in enumerate(centers):
+        l, a, b = c
+        if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
+            mask[segmented_img == i] = 255
 
-    # 2) Hexagon-Raster ohne Lücken
-    # Zellgröße = 5% der kleineren Dimension
-    cell = max(1, int(min(w, h) * 0.05))
-    # Hexagon-Höhe
-    hex_h = cell * math.sqrt(3) / 2
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    h, w = mask.shape
+    img = Image.new("RGB", (w, h), "black")
+    draw = ImageDraw.Draw(img)
+    occupied = np.zeros((h, w), dtype=bool)
 
-    # Schwarze Linien
-    line_color = (0, 0, 0)
-    thickness = 2
+    for cnt in contours:
+        for i, pt in enumerate(cnt[::2]):
+            x, y = pt[0]
+            dx, dy = x - w // 2, y - h // 2
+            dist = np.sqrt(dx**2 + dy**2)
+            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
+            r = int(1 + (1 - norm) * 3)
+            s = r + 1
+            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+                if not occupied[y-s:y+s, x-s:x+s].any():
+                    draw.ellipse((x - r, y - r, x + r, y + r), fill="white")
+                    occupied[y-s:y+s, x-s:x+s] = True
 
-    # Wir beginnen in der linken oberen Ecke und füllen lückenlos
-    # zwei verschachtelte Schleifen, sodass die Hexen sich berühren
-    rows = int(math.ceil(h / (hex_h)))
-    cols = int(math.ceil(w / (cell * 0.75)))
+    coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+    count = 0
+    for y, x in coords:
+        if count > 4000: break
+        r = np.random.randint(1, 4)
+        s = r + 1
+        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+            if not occupied[y-s:y+s, x-s:x+s].any():
+                draw.ellipse((x - r, y - r, x + r, y + r), fill="white")
+                occupied[y-s:y+s, x-s:x+s] = True
+                count += 1
 
-    for row in range(rows + 1):
-        for col in range(cols + 1):
-            # Versatz für jede zweite Spalte
-            x = int(col * cell * 0.75)
-            y = int(row * hex_h + (col % 2) * (hex_h / 2))
+    img.save("static/output.png")
 
-            # Eckpunkte des Hexagons
-            pts = []
-            for i in range(6):
-                angle = math.pi/6 + i * math.pi/3
-                px = x + cell * math.cos(angle)
-                py = y + cell * math.sin(angle)
-                pts.append((int(px), int(py)))
-            pts_np = np.array(pts, np.int32).reshape((-1,1,2))
-            cv2.polylines(canvas, [pts_np], True, line_color,
-                          thickness=thickness, lineType=cv2.LINE_AA)
-
-    # 3) Doppelt dicker Rahmen in Farbe
-    col = (int(color[0]), int(color[1]), int(color[2]))
-    cv2.rectangle(canvas,
-                  (0, 0),
-                  (w-1, h-1),
-                  col,
-                  thickness=margin * 2)
-
-    return canvas
-    
-def style_triangle_free(image, step, max_side, color, margin):
-    col = (int(color[0]), int(color[1]), int(color[2]))
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-    gray = cv2.bitwise_not(gray)
-    h, w = gray.shape
-    mask = np.zeros((h, w), dtype=np.uint8)
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            patch = gray[y:y+step, x:x+step]
-            avg = patch.mean() / 255.0
-            side = (1 - avg) * max_side
-            if side < 3: continue
-            cx = x + step/2 + random.uniform(-step/4, step/4)
-            cy = y + step/2 + random.uniform(-step/4, step/4)
-            ang = random.uniform(0, 2*pi)
-            pts = []
-            for i in range(3):
-                th = ang + i * 2*pi/3
-                px = cx + (side/2) * cos(th)
-                py = cy + (side/2) * sin(th)
-                pts.append((int(px), int(py)))
-            pts_np = np.array(pts, np.int32)
-            cv2.fillConvexPoly(mask, pts_np, 255)
-            for (px, py) in pts:
-                cv2.circle(mask, (px, py), 2, 255, -1)
-    cv2.rectangle(mask, (0, 0), (w-1, h-1), 255, thickness=margin*2)
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col
-    canvas[mask == 255] = (255,255,255)
-    return canvas
-
-
-def style_density_grid(image, margin, color):
-    """
-    Teilt das Bild in 2%-Zellen, jede Zelle in 3×3 Sub-Quadrate.
-    Helle Zellen → 1 gefülltes Sub-Quadrat, dunkle → bis zu 8.
-    margin: Breite des Rahmens (px)
-    color: np.array([B, G, R])
-    """
-    # 0) Farbe in Python-Tuple verwandeln
-    col = (int(color[0]), int(color[1]), int(color[2]))
-
-    # 1) Graustufen + Kontrast
-    h, w = image.shape[:2]
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-
-    # Zellgröße: 2%
-    cell_w = max(1, int(w * 0.02))
-    cell_h = max(1, int(h * 0.02))
-    sub_w = cell_w // 3
-    sub_h = cell_h // 3
-
-    # 2) Canvas: farbiger Hintergrund + Rahmen
-    canvas = np.zeros((h, w, 3), np.uint8)
-    canvas[:] = col
-    # Rahmen in Farbe
-    cv2.rectangle(canvas, (0, 0), (w-1, h-1), col, thickness=margin)
-
-    # 3) Sub-Quadrate je nach Helligkeit
-    for y0 in range(margin, h-margin, cell_h):
-        for x0 in range(margin, w-margin, cell_w):
-            patch = gray[y0:y0+cell_h, x0:x0+cell_w]
-            if patch.size == 0:
-                continue
-            avg = patch.mean() / 255.0   # 0..1
-            count = int((1 - avg) * 7) + 1   # 1..8
-
-            # alle 9 Sub-Zellen sammeln
-            subs = [(x0 + j*sub_w, y0 + i*sub_h) for i in range(3) for j in range(3)]
-            fill = random.sample(subs, count)
-            for sx, sy in fill:
-                cv2.rectangle(
-                    canvas,
-                    (sx, sy),
-                    (sx+sub_w, sy+sub_h),
-                    (255,255,255),  # die Quadrate bleiben weiß
-                    thickness=-1
-                )
-
-    return canvas
-
-def style_rectangle(image, step, max_side, color, margin):
-    """
-    1) Farbiges Untergrund-Canvas in 'color'
-    2) Grobes Hintergrund-Gitter aus farbigen Quadraten (5% Schritt)
-    3) Feines Gitter-Muster aus weißen Quadraten (Größe ~ avg*max_side)
-    4) Doppelt dicker Rahmen in der gewählten Farbe
-    """
-    # Farbe als Python-Tuple
-    col = (int(color[0]), int(color[1]), int(color[2]))
-
-    # Graustufen + Kontrast fürs Detail-Muster
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-
-    h, w = gray.shape
-
-    # 1) Farbiger Hintergrund
-    canvas = np.zeros((h, w, 3), dtype=np.uint8)
-    canvas[:] = col
-
-    # 2) Grobes Hintergrund-Gitter (5% Schritt) in Farbe
-    cell_w = max(1, int(w * 0.05))
-    cell_h = max(1, int(h * 0.05))
-    for y in range(0, h, cell_h):
-        for x in range(0, w, cell_w):
-            bx = min(x + cell_w, w)
-            by = min(y + cell_h, h)
-            # Hier wird in Hintergrund-Farbe über das Canvas gemalt
-            cv2.rectangle(canvas, (x, y), (bx, by), col, thickness=-1)
-
-    # 3) Feines Gitter-Muster aus weißen Quadraten
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            patch = gray[y:y+step, x:x+step]
-            avg = patch.mean() / 255.0
-            side = int(avg * max_side)
-            if side < 2:
-                continue
-            tx = x + (step - side) // 2
-            ty = y + (step - side) // 2
-            cv2.rectangle(
-                canvas,
-                (tx, ty),
-                (tx + side, ty + side),
-                (255, 255, 255),
-                thickness=-1
-            )
-
-    # 4) Doppelt dicker Rahmen in Farbe
-    cv2.rectangle(
-        canvas,
-        (0, 0),
-        (w - 1, h - 1),
-        col,
-        thickness=margin * 2
-    )
-
-    return canvas
-
-
-
-
-
-def style_triangle_free_svg(image, out_svg_path, step, max_side, margin, color):
-    r, g, b = int(color[2]), int(color[1]), int(color[0])
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.equalizeHist(gray)
-    gray = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-    gray = cv2.bitwise_not(gray)
-    h, w = gray.shape
-    dwg = svgwrite.Drawing(out_svg_path, size=(f"{w}px", f"{h}px"))
-    dwg.add(dwg.rect(insert=(0,0), size=(w,h),
-                     fill=svgwrite.rgb(r,g,b,mode='RGB')))
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            patch = gray[y:y+step, x:x+step]
-            avg = patch.mean()/255.0
-            side = (1 - avg)*max_side
-            if side < 3: continue
-            cx = x + step/2 + random.uniform(-step/4, step/4)
-            cy = y + step/2 + random.uniform(-step/4, step/4)
-            ang = random.uniform(0, 2*pi)
-            pts = []
-            for i in range(3):
-                th = ang + i * 2*pi/3
-                px = cx + (side/2)*cos(th)
-                py = cy + (side/2)*sin(th)
-                pts.append((px, py))
-            dwg.add(dwg.polygon(points=pts, fill='white', stroke='none'))
-    dwg.add(dwg.rect(insert=(margin, margin),
-                     size=(w-2*margin, h-2*margin),
-                     fill='none',
-                     stroke=svgwrite.rgb(r,g,b,mode='RGB'),
-                     stroke_width=margin*2))
+    # SVG schreiben
+    svg_path = "static/output.svg"
+    dwg = svgwrite.Drawing(svg_path, size=(w, h), profile='tiny')
+    dwg.add(dwg.rect(insert=(0, 0), size=(w, h), fill='black'))
+    px = np.array(img)
+    ys, xs = np.where(np.all(px == [255, 255, 255], axis=-1))
+    for x, y in zip(xs, ys):
+        dwg.add(dwg.circle(center=(float(x), float(y)), r=1.2, fill='white'))
     dwg.save()
 
-@app.route('/', methods=['GET','POST'])
-def index():
-    upload_url = None
-    result_url = None
-    result_svg = None
-    upload_path = os.path.join('static','upload.png')
-    stil  = request.form.get('stil','einfach')
-    farbe = request.form.get('farbe','schwarz')
+    return render_template("index.html", result=True)
 
-    if request.method == 'POST':
-        imgfile = request.files.get('image')
-        if imgfile and imgfile.filename:
-            buf = imgfile.read()
-            image = cv2.imdecode(np.frombuffer(buf, np.uint8), cv2.IMREAD_COLOR)
-            os.makedirs('static', exist_ok=True)
-            with open(upload_path,'wb') as f:
-                f.write(buf)
-        else:
-            image = cv2.imread(upload_path)
-
-        upload_url = upload_path
-        params = STYLE_PARAMS.get(stil, STYLE_PARAMS['einfach'])
-        color  = COLORS.get(farbe, COLORS['schwarz'])
-
-        # Auswahl der richtigen Render-Funktion
-        if stil == 'vierreck':
-            canvas = style_rectangle(
-                image,
-                step=params['step'],
-                max_side=params['max_side'],
-                color=color,
-                margin=params['margin']
-            )
-        elif stil == 'vierreck2':
-            canvas = style_density_grid(
-                image,
-                margin=params['margin'],
-                color=color
-            )
-        elif stil == 'biene':
-            canvas = style_biene(
-                image,
-                margin=params['margin'],
-                color=color
-            )
-        else:
-            canvas = style_triangle_free(
-                image,
-                step=params['step'],
-                max_side=params['max_side'],
-                color=color,
-                margin=params['margin']
-            )
-
-        # PNG speichern
-        out_png = os.path.join('static','output.png')
-        cv2.imwrite(out_png, canvas)
-        result_url = out_png
-
-        # SVG nur für triangle_free
-        if stil == 'triangle_free':
-            svg_p = os.path.join('static','output.svg')
-            style_triangle_free_svg(
-                image,
-                svg_p,
-                step=params['step'],
-                max_side=params['max_side'],
-                margin=params['margin'],
-                color=color
-            )
-            result_svg = svg_p
-
-    return render_template('index.html',
-                           upload_url=upload_url,
-                           result_url=result_url,
-                           result_svg=result_svg,
-                           stil=stil,
-                           farbe=farbe)
-
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT',5000)))
+if __name__ == "__main__":
+    app.run(debug=True)

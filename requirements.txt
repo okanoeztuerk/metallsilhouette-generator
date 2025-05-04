@@ -3,4 +3,5 @@ opencv-python
 numpy
 pillow
 svgwrite
+gunicorn
 

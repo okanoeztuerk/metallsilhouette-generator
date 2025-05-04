@@ -74,7 +74,9 @@ def generate():
     px = np.array(img)
     ys, xs = np.where(np.all(px == [255, 255, 255], axis=-1))
     for x, y in zip(xs, ys):
-        dwg.add(dwg.circle(center=(float(x), float(y)), r=1.2, fill='white'))
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            dwg.add(dwg.circle(center=(float(x), float(y)), r=1.2, fill='white'))
+
     dwg.save()
 
     return render_template("index.html", result=True)

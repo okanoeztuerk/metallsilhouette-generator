@@ -46,14 +46,20 @@
     <div class="left">
         <h2>Wandbild Generator</h2>
         <form method="post" enctype="multipart/form-data" action="/generate">
-            
             <div class="form-group">
                 <label for="image">Bild hochladen:</label>
-                <input type="file" name="image" required>
+                <input type="file" name="image">
             </div>
+            
+            {% if image_uploaded %}
+                <p style="color: #888;">Ein Bild ist bereits hochgeladen. Du kannst es durch ein neues ersetzen.</p>
+            {% else %}
+                <p style="color: #be2828;">Laden Sie ein Bild hoch.</p>
+            {% endif %}
+            
             <div class="form-group">
                 <label for="color">Hintergrundfarbe (Mintfarbton):</label>
-                <input type="color" name="color" value="#98ffcc">
+                <input type="color" name="color" value="#A17E1B">
             </div>
             <div class="form-group">
                 <label for="shape">Form:</label>

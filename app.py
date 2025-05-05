@@ -93,6 +93,10 @@ def generate():
     price_per_cm2 = 0.15
     price = round(width_cm * height_cm * price_per_cm2, 2)
 
+    # Am Ende der generate()-Funktion ergänzen:
+    create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
+
+
     return render_template("index.html", result=True,
                            width_cm=width_cm,
                            height_cm=height_cm,
@@ -128,7 +132,5 @@ def create_preview(generated_path, background_path, width_cm_real, preview_path)
     background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
     background.convert("RGB").save(preview_path)
 
-# Am Ende der generate()-Funktion ergänzen:
-create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
 
 

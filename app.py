@@ -40,7 +40,7 @@ def generate():
     width_cm = float(request.form.get("width_cm", "30"))
     aspect_ratio = w / h
     height_cm = round(width_cm / aspect_ratio, 1)
-    price = round(width_cm * height_cm * 0.15, 2)
+    price = round(width_cm * height_cm * 0.15*0.5, 2)
 
     img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
@@ -62,6 +62,7 @@ def generate():
     draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
     img.save("static/output.png")
 
+    occupied_svg = np.zeros((h, w), dtype=bool)
     dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
     count = 0
     for y, x in coords:
@@ -72,11 +73,12 @@ def generate():
         x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
         if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
             continue
-        if not occupied[y1:y2, x1:x2].any():
+        if not occupied_svg[y1:y2, x1:x2].any():
             dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='none', stroke='black', stroke_width=0.1))
-            occupied[y1:y2, x1:x2] = True
+            occupied_svg[y1:y2, x1:x2] = True
             count += 1
     dwg.save()
+
 
     def create_preview(generated_path, background_path, width_cm_real, preview_path):
         background = Image.open(background_path).convert("RGBA")

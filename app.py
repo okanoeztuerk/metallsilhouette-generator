@@ -58,6 +58,8 @@ def generate():
             occupied[y1:y2, x1:x2] = True
             count += 1
 
+    border_thickness = 15
+    draw.rectangle([0, 0, w - 1, h - 1], outline=(0, 0, 0, 255), width=border_thickness)
     img.save("static/output.png")
 
     dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
@@ -88,21 +90,18 @@ def generate():
         foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
 
         pos_x = (bg_w - new_width_px) // 2
-        sofa_unterkante_y = int(bg_h * 0.7)
+        sofa_unterkante_y = int(bg_h * 0.45)  # früher war 0.7
         pos_y = sofa_unterkante_y - new_height_px - 20
 
-        # Schatten ohne transparente Löcher
-        r, g, b, a = foreground_resized.split()
-        opaque_mask = a.point(lambda px: 255 if px > 0 else 0)
-        shadow_black = Image.merge("RGBA", (
-            Image.new("L", a.size, 0),
-            Image.new("L", a.size, 0),
-            Image.new("L", a.size, 0),
-            opaque_mask
-        ))
-        shadow_blur = shadow_black.filter(ImageFilter.GaussianBlur(6))
+        # Schatten nur vom Rahmen (halbtransparent)
+        frame = Image.new("RGBA", foreground_resized.size, (0, 0, 0, 0))
+        draw_frame = ImageDraw.Draw(frame)
+        thickness = 15
+        draw_frame.rectangle([0, 0, frame.width - 1, frame.height - 1], outline=(0, 0, 0, 128), width=thickness)
+        shadow = frame.filter(ImageFilter.GaussianBlur(6))
         shadow_offset = (5, 5)
-        background.paste(shadow_blur, (pos_x + shadow_offset[0], pos_y + shadow_offset[1]), shadow_blur)
+
+        background.paste(shadow, (pos_x + shadow_offset[0], pos_y + shadow_offset[1]), shadow)
         background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
         background.convert("RGB").save(preview_path)
 
@@ -112,7 +111,6 @@ def generate():
                            width_cm=width_cm,
                            height_cm=height_cm,
                            price=price)
-    
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))

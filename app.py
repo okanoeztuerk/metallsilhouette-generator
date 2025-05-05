@@ -3,9 +3,10 @@ import os
 import cv2
 import numpy as np
 from flask import Flask, render_template, request
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
 import random
+from PIL import ImageFilter
 
 app = Flask(__name__)
 
@@ -109,27 +110,31 @@ if __name__ == "__main__":
 
 from PIL import Image
 
+# Vorschau mit Schatten
 def create_preview(generated_path, background_path, width_cm_real, preview_path):
     background = Image.open(background_path).convert("RGBA")
     foreground = Image.open(generated_path).convert("RGBA")
-
     bg_w, bg_h = background.size
-
-    # Annahme: die weiße Wand im Bild entspricht 200 cm → rechne Maßstab
-    wand_pixel_breite = int(bg_w * 0.75)  # ca. 75% der Bildbreite
+    wand_pixel_breite = int(bg_w * 0.75)
     pixel_per_cm = wand_pixel_breite / 200.0
-
     new_width_px = int(width_cm_real * pixel_per_cm)
     ratio = foreground.width / foreground.height
     new_height_px = int(new_width_px / ratio)
-
     foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
 
-    # Position: mittig horizontal, ca. 1/3 von oben
     pos_x = (bg_w - new_width_px) // 2
-    sofa_unterkante_y = int(bg_h * 0.7)  # z. B. 70% des Bildes ist Sofakante
+    sofa_unterkante_y = int(bg_h * 0.7)
     pos_y = sofa_unterkante_y - new_height_px - 20
 
+    # Schatten
+    r, g, b, a = foreground_resized.split()
+    shadow_black = Image.merge("RGBA", (Image.new("L", a.size, 0),
+                                        Image.new("L", a.size, 0),
+                                        Image.new("L", a.size, 0),
+                                        a))
+    shadow_blur = shadow_black.filter(ImageFilter.GaussianBlur(6))
+    shadow_offset = (5, 5)
+    background.paste(shadow_blur, (pos_x + shadow_offset[0], pos_y + shadow_offset[1]), shadow_blur)
     background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
     background.convert("RGB").save(preview_path)
 

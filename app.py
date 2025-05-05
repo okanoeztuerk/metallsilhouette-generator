@@ -43,7 +43,7 @@ def generate():
     bg_color = request.form.get("color", "#98ffcc")
 
     # PNG vorbereiten mit mintfarbenem Hintergrund
-    img = Image.new("RGB", (w, h), bg_color)
+    img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
 
     # Punkte in weiß
@@ -58,7 +58,7 @@ def generate():
         if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
             continue
         if not occupied[y1:y2, x1:x2].any():
-            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill="white")
+            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(255, 255, 255, 0))
             occupied[y1:y2, x1:x2] = True
             count += 1
 
@@ -127,7 +127,8 @@ def create_preview(generated_path, background_path, width_cm_real, preview_path)
 
     # Position: mittig horizontal, ca. 1/3 von oben
     pos_x = (bg_w - new_width_px) // 2
-    pos_y = int(bg_h * 0.33)
+    sofa_unterkante_y = int(bg_h * 0.7)  # z. B. 70% des Bildes ist Sofakante
+    pos_y = sofa_unterkante_y - new_height_px - 20
 
     background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
     background.convert("RGB").save(preview_path)

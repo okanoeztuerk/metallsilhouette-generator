@@ -20,6 +20,9 @@ def generate():
     image_bgr = cv2.imread(path)
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     image_resized = cv2.resize(image_rgb, (512, int(image_rgb.shape[0] * 512 / image_rgb.shape[1])))
+    gray = cv2.cvtColor(image_resized, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 100, 200)
+
     lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
     pixels = lab.reshape((-1, 3)).astype(np.float32)
     _, labels, centers = cv2.kmeans(pixels, 8, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0), 10, cv2.KMEANS_RANDOM_CENTERS)
@@ -32,31 +35,38 @@ def generate():
             mask[segmented_img == i] = 255
 
     h, w = mask.shape
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
-    occupied = np.zeros((h, w), dtype=bool)
+    coords_mask = np.argwhere(mask == 255)
+    coords_edges = np.argwhere(edges == 255)
+    np.random.shuffle(coords_mask)
+    np.random.shuffle(coords_edges)
 
     bg_color = request.form.get("color", "#98ffcc")
     width_cm = float(request.form.get("width_cm", "30"))
     aspect_ratio = w / h
     height_cm = round(width_cm / aspect_ratio, 1)
-    price = round(width_cm * height_cm * 0.15*0.5, 2)
+    price = round(width_cm * height_cm * 0.15 * 0.5, 2)
 
     img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
-    count = 0
-    for y, x in coords:
-        if count > 1500:
-            break
-        radius = np.random.randint(3, 7)
-        buffer = radius + 2
-        x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
-        if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
-            continue
-        if not occupied[y1:y2, x1:x2].any():
-            draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(255, 255, 255, 0))
-            occupied[y1:y2, x1:x2] = True
-            count += 1
+    occupied = np.zeros((h, w), dtype=bool)
+
+    def place_circles(coord_list, max_count, occupied, fill):
+        count = 0
+        for y, x in coord_list:
+            if count >= max_count:
+                break
+            radius = np.random.randint(3, 7)
+            buffer = radius + 2
+            x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
+            if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
+                continue
+            if not occupied[y1:y2, x1:x2].any():
+                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill)
+                occupied[y1:y2, x1:x2] = True
+                count += 1
+
+    place_circles(coords_edges, 500, occupied, (255, 255, 255, 0))  # Konturen betonen
+    place_circles(coords_mask, 1000, occupied, (255, 255, 255, 0))  # Restliche Fläche
 
     border_thickness = 15
     draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
@@ -65,7 +75,7 @@ def generate():
     occupied_svg = np.zeros((h, w), dtype=bool)
     dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
     count = 0
-    for y, x in coords:
+    for y, x in coords_mask:
         if count > 1500:
             break
         radius = np.random.randint(3, 7)
@@ -74,11 +84,10 @@ def generate():
         if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
             continue
         if not occupied_svg[y1:y2, x1:x2].any():
-            dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='black', stroke_width=0.1))
+            dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
             occupied_svg[y1:y2, x1:x2] = True
             count += 1
     dwg.save()
-
 
     def create_preview(generated_path, background_path, width_cm_real, preview_path):
         background = Image.open(background_path).convert("RGBA")
@@ -92,16 +101,12 @@ def generate():
         foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
 
         pos_x = (bg_w - new_width_px) // 2
-        sofa_unterkante_y = int(bg_h * 0.5)  # früher war 0.7
+        sofa_unterkante_y = int(bg_h * 0.5)
         pos_y = sofa_unterkante_y - new_height_px - 20
 
-        
         thickness = 6
-        
-        # Farbe des sichtbaren Rahmens (Mintfarbe)
         draw_visible = ImageDraw.Draw(foreground_resized)
         draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
-
 
         background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
         background.convert("RGB").save(preview_path)
@@ -116,10 +121,3 @@ def generate():
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
-
-
-
-
-
-

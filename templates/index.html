@@ -1,57 +1,97 @@
-
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Punktgrafik Generator</title>
+    <title>Wandbild Generator</title>
     <style>
-        body { font-family: sans-serif; background: #111; color: #eee; text-align: center; padding: 40px; }
-        input[type=file], select, input[type=number], button { margin: 10px; padding: 10px; }
-        img { max-width: 90%%; margin-top: 20px; border: 1px solid #555; }
-        a { color: #0f0; display: block; margin-top: 10px; font-weight: bold; }
+        body {
+            background-color: #f9f4e7;
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        .left {
+            width: 35%;
+            padding: 20px;
+            background-color: #fff8ee;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+        .right {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: url("/static/background.jpg") center/contain no-repeat;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+        }
+        img.preview {
+            max-width: 90%;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
-    <h1>Punktgrafik-Generator</h1>
-    <form method="POST" action="/generate" enctype="multipart/form-data">
-        <input type="file" name="image" accept="image/*" required><br>
+<div class="container">
+    <div class="left">
+        <h2>Wandbild Generator</h2>
+        <form method="post" enctype="multipart/form-data" action="/generate">
+            {% if not image_uploaded %}
+            <div class="form-group">
+                <label for="image">Bild hochladen:</label>
+                <input type="file" name="image" required>
+            </div>
+            {% endif %}
+            <div class="form-group">
+                <label for="color">Hintergrundfarbe (Mintfarbton):</label>
+                <input type="color" name="color" value="#98ffcc">
+            </div>
+            <div class="form-group">
+                <label for="shape">Form:</label>
+                <select name="shape">
+                    <option value="circle">Kreis</option>
+                    <option value="square">Quadrat</option>
+                    <option value="triangle">Dreieck</option>
+                    <option value="sand">Sanduhr</option>
+                    <option value="realHeart">Herz</option>
+                    <option value="S">S</option>
+                    <option value="I">I</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="width_cm">Breite in cm:</label>
+                <input type="number" name="width_cm" value="{{ width_cm or 100 }}" min="10" max="200" step="1">
+            </div>
+            <button type="submit">Generieren</button>
+        </form>
 
-        <label for="color">Hintergrundfarbe wählen:</label>
-        <select name="color" id="color">
-            <option value="#587246">Olivgrün</option>
-            <option value="#D3B454">Senf</option>
-            <option value="#3f888f">Türkis</option>
-            <option value="#423E3F">Anthrazit</option>
-            <option value="#EA657F">Pink</option>
-            <option value="#AA719B">Lila</option>
-        </select><br>
-        <label for="color">Form wählen:</label>
-        <select name="shape">
-            <option value="circle">Kreis</option>
-            <option value="square">Kreis/Quadrat</option>
-            <option value="triangle">Kreis/Dreieck</option>
-            <option value="heart">Kreis/Sand</option>
-            <option value="sand">Herzen</option>
-            <option value="realHeart">Herzen</option>
-            <option value="S">S</option>
-            <option value="I">I</option>
-          </select>
+        {% if result %}
+        <hr>
+        <p><strong>Höhe:</strong> {{ height_cm }} cm</p>
+        <p><strong>Preis:</strong> {{ price }} €</p>
+        <p><a href="/static/output.png" download>PNG herunterladen</a></p>
+        <p><a href="/static/output.svg" download>SVG herunterladen</a></p>
+        <p><a href="/static/preview.png" download>Vorschau herunterladen</a></p>
+        {% endif %}
+    </div>
 
-        <label for="width">Breite (cm):</label>
-        <input type="number" name="width_cm" id="width" step="0.1" min="10" required><br>
-
-        <button type="submit">Generieren</button>
-    </form>
-
-    {% if result %}
-    <h2>Ergebnis</h2>
-    <img src="{{ url_for('static', filename='preview.png') }}" alt="Vorschau auf Wand" style="max-width:90%%; border:3px solid #444;"><br>
-    <p>Breite: {{ width_cm }} cm</p>
-    <p>Höhe: {{ height_cm }} cm</p>
-    <p><strong>Preis: {{ price }} EUR</strong></p>
-    <img src="{{ url_for('static', filename='output.png') }}" alt="PNG Ergebnis"><br>
-    <a href="{{ url_for('static', filename='output.png') }}" download>PNG herunterladen</a>
-    <a href="{{ url_for('static', filename='output.svg') }}" download>SVG herunterladen</a>
-    {% endif %}
+    <div class="right">
+        {% if result %}
+        <img src="/static/preview.png" class="preview" alt="Vorschau">
+        {% else %}
+        <p style="color: #aaa;">Bitte Bild hochladen und Optionen wählen</p>
+        {% endif %}
+    </div>
+</div>
 </body>
 </html>

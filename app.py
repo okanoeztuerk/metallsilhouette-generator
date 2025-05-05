@@ -1,21 +1,29 @@
 import os
 import cv2
 import numpy as np
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, session
 from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
 
 app = Flask(__name__)
+app.secret_key = "supersecretkey"
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", result=False)
+    image_uploaded = os.path.exists("static/upload.jpg")
+    return render_template("index.html", result=False, image_uploaded=image_uploaded)
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    file = request.files["image"]
-    path = "static/upload.jpg"
-    file.save(path)
+    if "image" in request.files and request.files["image"].filename:
+        file = request.files["image"]
+        path = "static/upload.jpg"
+        file.save(path)
+        session['image_uploaded'] = True
+    else:
+        if not os.path.exists("static/upload.jpg"):
+            return render_template("index.html", result=False, error="Kein Bild vorhanden.")
+        path = "static/upload.jpg"
 
     image_bgr = cv2.imread(path)
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -32,15 +40,19 @@ def generate():
         if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
             mask[segmented_img == i] = 255
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     h, w = mask.shape
     bg_color = request.form.get("color", "#98ffcc")
-    width_cm = float(request.form.get("width_cm", "30"))
+    width_cm = float(request.form.get("width_cm", "100"))  # default now 100 cm
     aspect_ratio = w / h
     height_cm = round(width_cm / aspect_ratio, 1)
     price = round(width_cm * height_cm * 0.15 * 0.5, 2)
 
     shape_type = request.form.get("shape", "circle")
+
+            coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
     img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
     occupied = np.zeros((h, w), dtype=bool)
@@ -70,13 +82,8 @@ def generate():
                         heart = Image.new("L", (2*r+4, 2*r+4), 0)
                         hd = ImageDraw.Draw(heart)
                         hd.polygon([
-                            (r+2, r//2),
-                            (r//2, 0),
-                            (0, r//2),
-                            (r, 2*r),
-                            (2*r, r//2),
-                            (3*r//2, 0),
-                            (r+2, r//2)
+                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
+                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
                         ], fill=255)
                         img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
                     elif shape_type == "S":
@@ -89,11 +96,9 @@ def generate():
                         draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
                     occupied[y-s:y+s, x-s:x+s] = True
 
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
     count = 0
     for y, x in coords:
-        if count > 4000:
+        if count > 2000:
             break
         r = np.random.randint(1, 4)
         s = r + 1
@@ -144,49 +149,14 @@ def generate():
                     dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black'))
                 occupied_svg[y1:y2, x1:x2] = True
                 count += 1
-
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
-    for y, x in coords:
-        if count > 4000:
-            break
-        r = np.random.randint(1, 4)
-        s = r + 1
-        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-            if not occupied_svg[y-s:y+s, x-s:x+s].any():
-                dwg.add(dwg.circle(center=(float(x), float(y)), r=r, fill='black', stroke='none'))
-                occupied_svg[y-s:y+s, x-s:x+s] = True
-                count += 1
-    dwg.save()
-
-    def create_preview(generated_path, background_path, width_cm_real, preview_path):
-        background = Image.open(background_path).convert("RGBA")
-        foreground = Image.open(generated_path).convert("RGBA")
-        bg_w, bg_h = background.size
-        wand_pixel_breite = int(bg_w * 0.75)
-        pixel_per_cm = wand_pixel_breite / 200.0
-        new_width_px = int(width_cm_real * pixel_per_cm)
-        ratio = foreground.width / foreground.height
-        new_height_px = int(new_width_px / ratio)
-        foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
-
-        pos_x = (bg_w - new_width_px) // 2
-        sofa_unterkante_y = int(bg_h * 0.5)
-        pos_y = sofa_unterkante_y - new_height_px - 20
-
-        thickness = 6
-        draw_visible = ImageDraw.Draw(foreground_resized)
-        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
-
-        background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
-        background.convert("RGB").save(preview_path)
-
     create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
 
     return render_template("index.html", result=True,
                            width_cm=width_cm,
                            height_cm=height_cm,
-                           price=price)
+                           price=price,
+                           image_uploaded=True)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))

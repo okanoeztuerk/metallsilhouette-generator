@@ -142,11 +142,6 @@ def generate():
                     dwg.add(dwg.path(d=path, fill='black'))
                 elif shape_type == "I":
                     dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black'))
-            elif shape_type == "square":
-                dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))
-            elif shape_type == "triangle":
-                points = [(x, y - radius), (x - radius, y + radius), (x + radius, y + radius)]
-                dwg.add(dwg.polygon(points=[(float(px), float(py)) for px, py in points], fill='black'))
                 occupied_svg[y1:y2, x1:x2] = True
                 count += 1
 

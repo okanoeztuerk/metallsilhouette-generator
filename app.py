@@ -20,12 +20,10 @@ def generate():
     image_bgr = cv2.imread(path)
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     image_resized = cv2.resize(image_rgb, (512, int(image_rgb.shape[0] * 512 / image_rgb.shape[1])))
-    gray = cv2.cvtColor(image_resized, cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(gray, 100, 200)
-
     lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
     pixels = lab.reshape((-1, 3)).astype(np.float32)
-    _, labels, centers = cv2.kmeans(pixels, 8, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0), 10, cv2.KMEANS_RANDOM_CENTERS)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0)
+    _, labels, centers = cv2.kmeans(pixels, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     segmented_img = labels.flatten().reshape((image_resized.shape[:2]))
 
     mask = np.zeros_like(segmented_img, dtype=np.uint8)
@@ -34,12 +32,8 @@ def generate():
         if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
             mask[segmented_img == i] = 255
 
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     h, w = mask.shape
-    coords_mask = np.argwhere(mask == 255)
-    coords_edges = np.argwhere(edges == 255)
-    np.random.shuffle(coords_mask)
-    np.random.shuffle(coords_edges)
-
     bg_color = request.form.get("color", "#98ffcc")
     width_cm = float(request.form.get("width_cm", "30"))
     aspect_ratio = w / h
@@ -50,43 +44,68 @@ def generate():
     draw = ImageDraw.Draw(img)
     occupied = np.zeros((h, w), dtype=bool)
 
-    def place_circles(coord_list, max_count, occupied, fill):
-        count = 0
-        for y, x in coord_list:
-            if count >= max_count:
-                break
-            radius = np.random.choice([3, 4, 5, 6, 7, 8]) if fill == (255, 255, 255, 0) else np.random.choice([2, 3, 4])
-            buffer = radius + 2
-            x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
-            if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
-                continue
-            if not occupied[y1:y2, x1:x2].any():
-                draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=fill)
-                occupied[y1:y2, x1:x2] = True
-                count += 1
+    for cnt in contours:
+        for i, pt in enumerate(cnt[::2]):
+            x, y = pt[0]
+            dx, dy = x - w // 2, y - h // 2
+            dist = np.sqrt(dx**2 + dy**2)
+            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
+            r = int(1 + (1 - norm) * 3)
+            s = r + 1
+            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+                if not occupied[y-s:y+s, x-s:x+s].any():
+                    draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    occupied[y-s:y+s, x-s:x+s] = True
 
-    place_circles(coords_edges, 1000, occupied, (255, 255, 255, 0))  # Konturen stark betonen (Personen/Gebäude)
-    place_circles(coords_mask, 1000, occupied, (255, 255, 255, 0))  # Restliche Fläche
+    coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+    count = 0
+    for y, x in coords:
+        if count > 4000:
+            break
+        r = np.random.randint(1, 4)
+        s = r + 1
+        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+            if not occupied[y-s:y+s, x-s:x+s].any():
+                draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                occupied[y-s:y+s, x-s:x+s] = True
+                count += 1
 
     border_thickness = 15
     draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
     img.save("static/output.png")
 
-    occupied_svg = np.zeros((h, w), dtype=bool)
     dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
+    occupied_svg = np.zeros((h, w), dtype=bool)
     count = 0
-    for y, x in coords_mask:
-        if count > 1500:
+    for cnt in contours:
+        for i, pt in enumerate(cnt[::2]):
+            x, y = pt[0]
+            dx, dy = x - w // 2, y - h // 2
+            dist = np.sqrt(dx**2 + dy**2)
+            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
+            radius = int(1 + (1 - norm) * 3)
+            buffer = radius + 1
+            x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
+            if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
+                continue
+            if not occupied_svg[y1:y2, x1:x2].any():
+                dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
+                occupied_svg[y1:y2, x1:x2] = True
+                count += 1
+
+    coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+    for y, x in coords:
+        if count > 4000:
             break
-        radius = np.random.randint(3, 7)
-        buffer = radius + 2
-        x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
-        if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
-            continue
-        if not occupied_svg[y1:y2, x1:x2].any():
-            dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
-            occupied_svg[y1:y2, x1:x2] = True
-            count += 1
+        r = np.random.randint(1, 4)
+        s = r + 1
+        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+            if not occupied_svg[y-s:y+s, x-s:x+s].any():
+                dwg.add(dwg.circle(center=(float(x), float(y)), r=r, fill='black', stroke='none'))
+                occupied_svg[y-s:y+s, x-s:x+s] = True
+                count += 1
     dwg.save()
 
     def create_preview(generated_path, background_path, width_cm_real, preview_path):
@@ -106,8 +125,7 @@ def generate():
 
         thickness = 6
         draw_visible = ImageDraw.Draw(foreground_resized)
-        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1],
-                               outline=ImageColor.getrgb(bg_color), width=thickness)
+        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
 
         background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
         background.convert("RGB").save(preview_path)

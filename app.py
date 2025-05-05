@@ -88,7 +88,6 @@ def generate():
                     elif shape_type == "I":
                         draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
                     occupied[y-s:y+s, x-s:x+s] = True
-                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
 
     coords = np.argwhere(mask == 255)
     np.random.shuffle(coords)
@@ -142,9 +141,7 @@ def generate():
                            f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"
                     dwg.add(dwg.path(d=path, fill='black'))
                 elif shape_type == "I":
-                    dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black')) + \
-                           f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"
-                    dwg.add(dwg.path(d=path, fill='black'))
+                    dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black'))
             elif shape_type == "square":
                 dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))
             elif shape_type == "triangle":

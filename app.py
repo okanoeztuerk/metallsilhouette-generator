@@ -102,7 +102,7 @@ def generate():
                 continue
             if not occupied_svg[y1:y2, x1:x2].any():
                 if shape_type == "circle":
-                dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
+                    dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none')), r=radius, fill='black', stroke='none'))
             elif shape_type == "square":
                 dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))
             elif shape_type == "triangle":

@@ -55,7 +55,7 @@ def generate():
         for y, x in coord_list:
             if count >= max_count:
                 break
-            radius = np.random.randint(3, 7)
+            radius = np.random.choice([3, 4, 5, 6, 7, 8]) if fill == (255, 255, 255, 0) else np.random.choice([2, 3, 4])
             buffer = radius + 2
             x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
             if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
@@ -65,7 +65,7 @@ def generate():
                 occupied[y1:y2, x1:x2] = True
                 count += 1
 
-    place_circles(coords_edges, 500, occupied, (255, 255, 255, 0))  # Konturen betonen
+    place_circles(coords_edges, 1000, occupied, (255, 255, 255, 0))  # Konturen stark betonen (Personen/Gebäude)
     place_circles(coords_mask, 1000, occupied, (255, 255, 255, 0))  # Restliche Fläche
 
     border_thickness = 15
@@ -106,7 +106,8 @@ def generate():
 
         thickness = 6
         draw_visible = ImageDraw.Draw(foreground_resized)
-        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
+        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1],
+                               outline=ImageColor.getrgb(bg_color), width=thickness)
 
         background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
         background.convert("RGB").save(preview_path)

@@ -85,8 +85,9 @@ def generate():
                         d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
                         d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
                         img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
-                    occupied[y-s:y+s, x-s:x+s] = True
                     elif shape_type == "I":
+                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
+                    occupied[y-s:y+s, x-s:x+s] = True
                         draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
 
     coords = np.argwhere(mask == 255)
@@ -135,6 +136,7 @@ def generate():
                 elif shape_type == "realHeart":
                     path = f"M{x},{y} C{x - radius},{y - radius} {x - radius},{y - 2 * radius} {x},{y - radius} " + \
                            f"C{x + radius},{y - 2 * radius} {x + radius},{y - radius} {x},{y} Z"
+                    dwg.add(dwg.path(d=path, fill='black'))
                 elif shape_type == "S":
                     path = f"M{x - radius},{y - radius} A{radius},{radius} 0 0,1 {x + radius},{y} " + \
                            f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"

@@ -42,7 +42,7 @@ def generate():
     height_cm = round(width_cm / aspect_ratio, 1)
     price = round(width_cm * height_cm * 0.15, 2)
 
-    
+    img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
     count = 0
     for y, x in coords:
@@ -93,9 +93,7 @@ def generate():
         sofa_unterkante_y = int(bg_h * 0.5)  # früher war 0.7
         pos_y = sofa_unterkante_y - new_height_px - 20
 
-        # Schatten nur vom Rahmen (halbtransparent)
-        frame = Image.new("RGBA", foreground_resized.size, (0, 0, 0, 60))
-        draw_frame = ImageDraw.Draw(frame)
+        
         thickness = 6
         
         # Farbe des sichtbaren Rahmens (Mintfarbe)

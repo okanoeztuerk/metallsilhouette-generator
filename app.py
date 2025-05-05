@@ -74,7 +74,7 @@ def generate():
         if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
             continue
         if not occupied_svg[y1:y2, x1:x2].any():
-            dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='none', stroke='black', stroke_width=0.1))
+            dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='black', stroke_width=0.1))
             occupied_svg[y1:y2, x1:x2] = True
             count += 1
     dwg.save()

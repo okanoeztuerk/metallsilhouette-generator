@@ -59,7 +59,7 @@ def generate():
             count += 1
 
     border_thickness = 15
-    draw.rectangle([0, 0, w - 1, h - 1], outline=(0, 0, 0, 255), width=border_thickness)
+    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
     img.save("static/output.png")
 
     dwg = svgwrite.Drawing("static/output.svg", size=(w, h))

@@ -61,12 +61,33 @@ def generate():
                         draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
                     elif shape_type == "triangle":
                         draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
-                    elif shape_type == "heart":
+                    elif shape_type == "sand":
                         heart = Image.new("L", (2*r+2, 2*r+2), 0)
                         d = ImageDraw.Draw(heart)
                         d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
                         img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "realHeart":
+                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
+                        hd = ImageDraw.Draw(heart)
+                        hd.polygon([
+                            (r+2, r//2),
+                            (r//2, 0),
+                            (0, r//2),
+                            (r, 2*r),
+                            (2*r, r//2),
+                            (3*r//2, 0),
+                            (r+2, r//2)
+                        ], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "S":
+                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
+                        d = ImageDraw.Draw(s_path)
+                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
+                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
+                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
                     occupied[y-s:y+s, x-s:x+s] = True
+                    elif shape_type == "I":
+                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
 
     coords = np.argwhere(mask == 255)
     np.random.shuffle(coords)
@@ -108,8 +129,19 @@ def generate():
                 elif shape_type == "triangle":
                     points = [(x, y - radius), (x - radius, y + radius), (x + radius, y + radius)]
                     dwg.add(dwg.polygon(points=[(float(px), float(py)) for px, py in points], fill='black'))
-                elif shape_type == "heart":
+                elif shape_type == "sand":
                     path = f"M{x},{y+radius//2} C{x-radius},{y-radius} {x+radius},{y-radius} {x},{y+radius//2} Z"
+                    dwg.add(dwg.path(d=path, fill='black'))
+                elif shape_type == "realHeart":
+                    path = f"M{x},{y} C{x - radius},{y - radius} {x - radius},{y - 2 * radius} {x},{y - radius} " + \
+                           f"C{x + radius},{y - 2 * radius} {x + radius},{y - radius} {x},{y} Z"
+                elif shape_type == "S":
+                    path = f"M{x - radius},{y - radius} A{radius},{radius} 0 0,1 {x + radius},{y} " + \
+                           f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"
+                    dwg.add(dwg.path(d=path, fill='black'))
+                elif shape_type == "I":
+                    dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black')) + \
+                           f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"
                     dwg.add(dwg.path(d=path, fill='black'))
             elif shape_type == "square":
                 dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))

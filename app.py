@@ -49,7 +49,7 @@ def generate():
 
     shape_type = request.form.get("shape", "circle")
 
-            coords = np.argwhere(mask == 255)
+    coords = np.argwhere(mask == 255)
     np.random.shuffle(coords)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 

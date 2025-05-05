@@ -40,6 +40,7 @@ def generate():
     height_cm = round(width_cm / aspect_ratio, 1)
     price = round(width_cm * height_cm * 0.15 * 0.5, 2)
 
+    shape_type = request.form.get("shape", "circle")
     img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
     occupied = np.zeros((h, w), dtype=bool)
@@ -54,7 +55,17 @@ def generate():
             s = r + 1
             if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
                 if not occupied[y-s:y+s, x-s:x+s].any():
-                    draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    if shape_type == "circle":
+                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "square":
+                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "triangle":
+                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
+                    elif shape_type == "heart":
+                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
+                        d = ImageDraw.Draw(heart)
+                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
                     occupied[y-s:y+s, x-s:x+s] = True
 
     coords = np.argwhere(mask == 255)
@@ -90,7 +101,13 @@ def generate():
             if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
                 continue
             if not occupied_svg[y1:y2, x1:x2].any():
+                if shape_type == "circle":
                 dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
+            elif shape_type == "square":
+                dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))
+            elif shape_type == "triangle":
+                points = [(x, y - radius), (x - radius, y + radius), (x + radius, y + radius)]
+                dwg.add(dwg.polygon(points=[(float(px), float(py)) for px, py in points], fill='black'))
                 occupied_svg[y1:y2, x1:x2] = True
                 count += 1
 

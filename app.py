@@ -96,8 +96,12 @@ def generate():
         # Schatten nur vom Rahmen (halbtransparent)
         frame = Image.new("RGBA", foreground_resized.size, (0, 0, 0, 0))
         draw_frame = ImageDraw.Draw(frame)
-        thickness = 15
-        draw_frame.rectangle([0, 0, frame.width - 1, frame.height - 1], outline=(0, 0, 0, 128), width=thickness)
+        thickness = 6
+        
+        # Farbe des sichtbaren Rahmens (Mintfarbe)
+        draw_visible = ImageDraw.Draw(foreground_resized)
+        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
+        
         shadow = frame.filter(ImageFilter.GaussianBlur(6))
         shadow_offset = (5, 5)
 

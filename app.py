@@ -1,12 +1,9 @@
-
 import os
 import cv2
 import numpy as np
 from flask import Flask, render_template, request
 from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
-import random
-from PIL import ImageFilter
 
 app = Flask(__name__)
 
@@ -39,19 +36,17 @@ def generate():
     np.random.shuffle(coords)
     occupied = np.zeros((h, w), dtype=bool)
 
-    # Mintfarben definieren
-    mint_colors = [(152, 255, 204), (102, 255, 204), (0, 255, 204), (0, 204, 153), (51, 255, 170)]
     bg_color = request.form.get("color", "#98ffcc")
+    width_cm = float(request.form.get("width_cm", "30"))
+    aspect_ratio = w / h
+    height_cm = round(width_cm / aspect_ratio, 1)
+    price = round(width_cm * height_cm * 0.15, 2)
 
-    # PNG vorbereiten mit mintfarbenem Hintergrund
     img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
     draw = ImageDraw.Draw(img)
-
-    # Punkte in weiß
     count = 0
-    max_circles = 1500
     for y, x in coords:
-        if count >= max_circles:
+        if count > 1500:
             break
         radius = np.random.randint(3, 7)
         buffer = radius + 2
@@ -63,18 +58,12 @@ def generate():
             occupied[y1:y2, x1:x2] = True
             count += 1
 
-    # Rahmen in derselben Mintfarbe (etwas dunkler wäre optional möglich)
-    border_thickness = 15
-    draw.rectangle([0, 0, w - 1, h - 1], outline=bg_color, width=border_thickness)
-
     img.save("static/output.png")
 
-    # SVG bleibt unverändert
-    svg_path = "static/output.svg"
-    dwg = svgwrite.Drawing(svg_path, size=(w, h))
+    dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
     count = 0
     for y, x in coords:
-        if count >= 1500:
+        if count > 1500:
             break
         radius = np.random.randint(3, 7)
         buffer = radius + 2
@@ -85,18 +74,39 @@ def generate():
             dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='none', stroke='black', stroke_width=0.1))
             occupied[y1:y2, x1:x2] = True
             count += 1
-
     dwg.save()
-    
-    width_cm = float(request.form.get("width_cm", "30"))
-    aspect_ratio = w / h
-    height_cm = round(width_cm / aspect_ratio, 1)
-    price_per_cm2 = 0.15
-    price = round(width_cm * height_cm * price_per_cm2, 2)
 
-    # Am Ende der generate()-Funktion ergänzen:
+    def create_preview(generated_path, background_path, width_cm_real, preview_path):
+        background = Image.open(background_path).convert("RGBA")
+        foreground = Image.open(generated_path).convert("RGBA")
+        bg_w, bg_h = background.size
+        wand_pixel_breite = int(bg_w * 0.75)
+        pixel_per_cm = wand_pixel_breite / 200.0
+        new_width_px = int(width_cm_real * pixel_per_cm)
+        ratio = foreground.width / foreground.height
+        new_height_px = int(new_width_px / ratio)
+        foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
+
+        pos_x = (bg_w - new_width_px) // 2
+        sofa_unterkante_y = int(bg_h * 0.7)
+        pos_y = sofa_unterkante_y - new_height_px - 20
+
+        # Schatten ohne transparente Löcher
+        r, g, b, a = foreground_resized.split()
+        opaque_mask = a.point(lambda px: 255 if px > 0 else 0)
+        shadow_black = Image.merge("RGBA", (
+            Image.new("L", a.size, 0),
+            Image.new("L", a.size, 0),
+            Image.new("L", a.size, 0),
+            opaque_mask
+        ))
+        shadow_blur = shadow_black.filter(ImageFilter.GaussianBlur(6))
+        shadow_offset = (5, 5)
+        background.paste(shadow_blur, (pos_x + shadow_offset[0], pos_y + shadow_offset[1]), shadow_blur)
+        background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
+        background.convert("RGB").save(preview_path)
+
     create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
-
 
     return render_template("index.html", result=True,
                            width_cm=width_cm,
@@ -108,35 +118,9 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
 
-from PIL import Image
 
-# Vorschau mit Schatten
-def create_preview(generated_path, background_path, width_cm_real, preview_path):
-    background = Image.open(background_path).convert("RGBA")
-    foreground = Image.open(generated_path).convert("RGBA")
-    bg_w, bg_h = background.size
-    wand_pixel_breite = int(bg_w * 0.75)
-    pixel_per_cm = wand_pixel_breite / 200.0
-    new_width_px = int(width_cm_real * pixel_per_cm)
-    ratio = foreground.width / foreground.height
-    new_height_px = int(new_width_px / ratio)
-    foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
 
-    pos_x = (bg_w - new_width_px) // 2
-    sofa_unterkante_y = int(bg_h * 0.7)
-    pos_y = sofa_unterkante_y - new_height_px - 20
 
-    # Schatten
-    r, g, b, a = foreground_resized.split()
-    shadow_black = Image.merge("RGBA", (Image.new("L", a.size, 0),
-                                        Image.new("L", a.size, 0),
-                                        Image.new("L", a.size, 0),
-                                        a))
-    shadow_blur = shadow_black.filter(ImageFilter.GaussianBlur(6))
-    shadow_offset = (5, 5)
-    background.paste(shadow_blur, (pos_x + shadow_offset[0], pos_y + shadow_offset[1]), shadow_blur)
-    background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
-    background.convert("RGB").save(preview_path)
 
 
 

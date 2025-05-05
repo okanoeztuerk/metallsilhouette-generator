@@ -40,6 +40,8 @@ def generate():
         if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
             mask[segmented_img == i] = 255
 
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
     h, w = mask.shape
     bg_color = request.form.get("color", "#98ffcc")
     width_cm = float(request.form.get("width_cm", "100"))  # default now 100 cm
@@ -149,6 +151,45 @@ def generate():
                     dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black'))
                 occupied_svg[y1:y2, x1:x2] = True
                 count += 1
+
+
+
+    coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+    for y, x in coords:
+        if count > 4000:
+            break
+        r = np.random.randint(1, 4)
+        s = r + 1
+        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+            if not occupied_svg[y-s:y+s, x-s:x+s].any():
+                dwg.add(dwg.circle(center=(float(x), float(y)), r=r, fill='black', stroke='none'))
+                occupied_svg[y-s:y+s, x-s:x+s] = True
+                count += 1
+    dwg.save()
+
+    def create_preview(generated_path, background_path, width_cm_real, preview_path):
+        background = Image.open(background_path).convert("RGBA")
+        foreground = Image.open(generated_path).convert("RGBA")
+        bg_w, bg_h = background.size
+        wand_pixel_breite = int(bg_w * 0.75)
+        pixel_per_cm = wand_pixel_breite / 200.0
+        new_width_px = int(width_cm_real * pixel_per_cm)
+        ratio = foreground.width / foreground.height
+        new_height_px = int(new_width_px / ratio)
+        foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
+
+        pos_x = (bg_w - new_width_px) // 2
+        sofa_unterkante_y = int(bg_h * 0.5)
+        pos_y = sofa_unterkante_y - new_height_px - 20
+
+        thickness = 6
+        draw_visible = ImageDraw.Draw(foreground_resized)
+        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
+
+        background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
+        background.convert("RGB").save(preview_path)
+
     create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
 
     return render_template("index.html", result=True,

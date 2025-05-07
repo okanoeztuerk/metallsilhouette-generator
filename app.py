@@ -173,33 +173,47 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
 
 @app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
-    # 1) Parameter auslesen
-    width_cm   = float(request.form["width_cm"])
-    color      = request.form["color"]
-    shape_type = request.form["shape"]
+    try:
+        # 1) Parameter auslesen
+        width_cm   = float(request.form["width_cm"])
+        color      = request.form["color"]
+        shape_type = request.form["shape"]
 
-    # 2) Neue UUID und Verzeichnis anlegen
-    image_uid = str(uuid.uuid4())
-    base_dir = os.path.join("static", "generated", image_uid)
-    os.makedirs(base_dir, exist_ok=True)
+        # 2) Neue UUID und Verzeichnis anlegen
+        image_uid = str(uuid.uuid4())
+        base_dir = os.path.join("static", "generated", image_uid)
+        os.makedirs(base_dir, exist_ok=True)
 
-    # 3) Eingabebild speichern
-    file = request.files["image"]
-    input_path = os.path.join(base_dir, "input.jpg")
-    file.save(input_path)
+        # 3) Eingabebild speichern
+        file = request.files.get("image")
+        if not file:
+            return jsonify({"error": "Kein Bild hochgeladen"}), 400
+        input_path = os.path.join(base_dir, "input.jpg")
+        file.save(input_path)
 
-    # 4) Bildverarbeitung (PNG, SVG, Vorschau) auslagern
-    paths = process_image(input_path, base_dir, width_cm, color, shape_type)
+        # 4) Prüfe, ob background.jpg existiert
+        bg_path = os.path.join("static", "background.jpg")
+        if not os.path.isfile(bg_path):
+            return jsonify({"error": "Hintergrundbild static/background.jpg fehlt"}), 500
 
-    # 5) Absolute URLs zusammensetzen und zurückgeben
-    base_url = request.url_root.rstrip("/")
-    return jsonify({
-        "type": "wandbild_ready",
-        "output_preview_url": f"{base_url}/{paths['preview']}",
-        "output_png_url":     f"{base_url}/{paths['png']}",
-        "output_svg_url":     f"{base_url}/{paths['svg']}",
-        "image_uid":          image_uid
-    })
+        # 5) Bildverarbeitung (PNG, SVG, Vorschau) aufrufen
+        paths = process_image(input_path, base_dir, width_cm, color, shape_type)
+
+        # 6) Absolute URLs zusammensetzen und zurückgeben
+        base_url = request.url_root.rstrip("/")
+        return jsonify({
+            "type": "wandbild_ready",
+            "output_preview_url": f"{base_url}/{paths['preview']}",
+            "output_png_url":     f"{base_url}/{paths['png']}",
+            "output_svg_url":     f"{base_url}/{paths['svg']}",
+            "image_uid":          image_uid
+        })
+
+    except Exception as e:
+        # Logge den kompletten Trace ins Server-Log
+        app.logger.exception("Fehler in /api/generate-shopify")
+        # Gib die Fehlermeldung im JSON zurück, damit du sie in widget.html siehst
+        return jsonify({"error": str(e)}), 500
 
 
 

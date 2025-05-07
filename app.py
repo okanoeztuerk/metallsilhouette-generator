@@ -6,23 +6,21 @@ from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
 
 import uuid
-
-
-@app.route("/widget")
-def widget():
-    return render_template("widget.html")
-
-
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 
 @app.route("/", methods=["GET"])
 def index():
-    image_uploaded = os.path.exists("static/upload.jpg")
-    return render_template("index.html", result=False, image_uploaded=image_uploaded)
+    return render_template("index.html", result=False, image_uploaded=os.path.exists("static/upload.jpg"))
+
+@app.route("/generate", methods=["POST"])
+@app.route("/generate-shopify", methods=["POST"])
+@app.route("/widget")
+
+def widget():
+    return render_template("widget.html")
 
 
-@app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
     file = request.files["image"]
     width_cm = float(request.form["width_cm"])

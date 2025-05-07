@@ -13,15 +13,14 @@ app.secret_key = "supersecretkey"
 def index():
     return render_template("index.html", result=False, image_uploaded=os.path.exists("static/upload.jpg"))
 
-@app.route("/generate", methods=["POST"])
-@app.route("/generate-shopify", methods=["POST"])
-@app.route("/widget")
 
+@app.route("/widget")
 def widget():
     return render_template("widget.html")
 
-
-def generate_shopify():
+@app.route("/generate", methods=["POST"])
+@app.route("/api/generate-shopify", methods=["POST"])
+def generate():
     file = request.files["image"]
     width_cm = float(request.form["width_cm"])
     color = request.form["color"]

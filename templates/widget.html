@@ -44,7 +44,9 @@
     <button type="submit">Vorschau generieren</button>
   </form>
 
-  <img id="preview" src="" alt="Vorschau">
+    <img src="" id="preview" alt="Vorschau">
+    <img src="" id="background" alt="Wand" style="position:absolute; top:0; z-index:-1;">
+
 
   <script>
     document.getElementById("konfigurator-form").addEventListener("submit", async function(e) {
@@ -59,6 +61,9 @@
 
       const data = await response.json();
       document.getElementById("preview").src = data.preview_url;
+    document.getElementById("background").src = data.background_url;
+
+
 
       // Sende Vorschau-Infos an Shopify-Seite (Elternseite)
       window.parent.postMessage({

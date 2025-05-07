@@ -83,13 +83,17 @@
         console.log('⏳ Sende Formular an /api/generate-shopify');
 
         try {
-          const resp = await fetch('/api/generate-shopify', {
-            method: 'POST',
-            body: new FormData(form)
-          });
-          if (!resp.ok) throw new Error(`Status ${resp.status}`);
-          const data = await resp.json();
-          console.log('✅ Antwort erhalten:', data);
+            const resp = await fetch('/api/generate-shopify', {
+           method: 'POST',
+           body: new FormData(form)
+         });
+         const data = await resp.json();
+         if (!resp.ok) {
+           console.error('🚨 Server-Error:', data);
+           alert('Fehler beim Generieren:\n' + (data.error || resp.statusText));
+           return;
+         }
+         console.log('✅ Antwort erhalten:', data);
 
           // Nachricht ans Parent-Window
           window.parent.postMessage({

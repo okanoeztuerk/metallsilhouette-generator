@@ -27,12 +27,7 @@ def generate_shopify():
         "preview_url": f"{base_url}/static/output.png",
         "svg_url": f"{base_url}/static/output.svg"
     })
-    else:
-        return render_template("index.html", result=True,
-                               width_cm=width_cm,
-                               height_cm=height_cm,
-                               price=price,
-                               image_uploaded=True)
+
 
 @app.route("/generate", methods=["POST"])
 def generate():

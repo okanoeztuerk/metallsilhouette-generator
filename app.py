@@ -1,9 +1,17 @@
 import os
 import cv2
 import numpy as np
-from flask import Flask, render_template, request, session
+from flask import Flask, render_template, request, session, jsonify
 from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
+
+import uuid
+
+
+@app.route("/widget")
+def widget():
+    return render_template("widget.html")
+
 
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -12,6 +20,33 @@ app.secret_key = "supersecretkey"
 def index():
     image_uploaded = os.path.exists("static/upload.jpg")
     return render_template("index.html", result=False, image_uploaded=image_uploaded)
+
+
+@app.route("/api/generate-shopify", methods=["POST"])
+def generate_shopify():
+    file = request.files["image"]
+    width_cm = float(request.form["width_cm"])
+    color = request.form["color"]
+    shape = request.form["shape"]
+
+    uid = str(uuid.uuid4())
+    base_path = f"static/generated/{uid}"
+    os.makedirs(base_path, exist_ok=True)
+
+    file_path = f"{base_path}/input.jpg"
+    file.save(file_path)
+
+    img = Image.new("RGBA", (400, 400), color)
+    draw = ImageDraw.Draw(img)
+    draw.text((100, 180), shape, fill="white")
+    img.save(f"{base_path}/output.png")
+    img.save(f"{base_path}/output.svg")  # Platzhalter
+
+    return jsonify({
+        "type": "wandbild_ready",
+        "preview_url": f"/{base_path}/output.png",
+        "svg_url": f"/{base_path}/output.svg"
+    })
 
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -197,6 +232,7 @@ def generate():
                            height_cm=height_cm,
                            price=price,
                            image_uploaded=True)
+
 
 
 if __name__ == "__main__":

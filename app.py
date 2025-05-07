@@ -16,7 +16,7 @@ SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
 
 
 def verify_hmac(data, hmac_header):
-    hm = hmac.new(SHOPIFY_SECRET.encode(), data, hashlib.sha256)
+    hm = hmac.new(SHOPIFY_WEBHOOK_SECRET.encode(), data, hashlib.sha256)
     return hmac.compare_digest(hm.hexdigest(), hmac_header)
 
 @app.route('/api/webhook/orders/create', methods=['POST'])
@@ -202,33 +202,6 @@ def generate_shopify():
     })
 
 
-@app.route("/api/generate-shopify", methods=["POST"])
-def generate_shopify():
-    # 1) Neue UUID
-    image_uid = str(uuid.uuid4())
-    base_dir = os.path.join("static", "generated", image_uid)
-    os.makedirs(base_dir, exist_ok=True)
-
-    # 2) Eingabedatei speichern
-    file = request.files["image"]
-    in_path = os.path.join(base_dir, "input.jpg")
-    file.save(in_path)
-
-    # 3) Bild verarbeiten (Preview, PNG, SVG)
-    #    Hier rufst du deine bestehende generate()-Logik so auf,
-    #    dass sie unter base_dir schreibt:
-    process_image(in_path, base_dir)  # implementiere process_image entsprechend
-
-    # 4) Absolute Basis-URL
-    base_url = request.url_root.rstrip("/")
-
-    return jsonify({
-        "type": "wandbild_ready",
-        "output_preview_url": f"{base_url}/{base_dir}/preview.png",
-        "output_png_url":     f"{base_url}/{base_dir}/output.png",
-        "output_svg_url":     f"{base_url}/{base_dir}/output.svg",
-        "image_uid": image_uid
-    })
 
 @app.route("/generate", methods=["POST"])
 def generate():

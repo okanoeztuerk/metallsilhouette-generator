@@ -44,8 +44,8 @@
     <button type="submit">Vorschau generieren</button>
   </form>
 
-    <img src="" id="preview" alt="Vorschau">
-    <img src="" id="background" alt="Wand" style="position:absolute; top:0; z-index:-1;">
+    <img src="/static/background.png" alt="Vorschau">
+    <img src="" id="preview" alt="Wand" style="position:absolute; top:0; z-index:-1;">
 
 
   <script>
@@ -60,16 +60,16 @@
       });
 
       const data = await response.json();
-      document.getElementById("preview").src = data.preview_url;
-    document.getElementById("background").src = data.background_url;
+      document.getElementById("preview").src = data.output_preview_url;
 
 
 
       // Sende Vorschau-Infos an Shopify-Seite (Elternseite)
       window.parent.postMessage({
         type: "wandbild_ready",
-        preview_url: data.preview_url,
-        svg_url: data.svg_url
+        output_preview_url: data.output_preview_url,
+        output_png_url: data.output_png_url,
+        output_svg_url: data.output_svg_url
       }, "*");
     });
   </script>

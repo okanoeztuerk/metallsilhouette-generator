@@ -24,8 +24,9 @@ def generate_shopify():
     base_url = request.url_root.rstrip("/")
     return jsonify({
         "type": "wandbild_ready",
-        "preview_url": f"{base_url}/static/output.png",
-        "svg_url": f"{base_url}/static/output.svg"
+        "output_preview_url": f"{base_url}/static/preview.png",
+        "output_png_url": f"{base_url}/static/output.png",
+        "output_svg_url": f"{base_url}/static/output.svg"
     })
 
 

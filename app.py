@@ -21,29 +21,18 @@ def widget():
 
 @app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
-    file = request.files["image"]
-    width_cm = float(request.form["width_cm"])
-    color = request.form["color"]
-    shape = request.form["shape"]
-
-    uid = str(uuid.uuid4())
-    base_path = f"static/generated/{uid}"
-    os.makedirs(base_path, exist_ok=True)
-
-    file_path = f"{base_path}/input.jpg"
-    file.save(file_path)
-
-    img = Image.new("RGBA", (400, 400), color)
-    draw = ImageDraw.Draw(img)
-    draw.text((100, 180), shape, fill="white")
-    img.save(f"{base_path}/output.png")
-    img.save(f"{base_path}/output.svg")  # Platzhalter
-
+    base_url = request.url_root.rstrip("/")
     return jsonify({
         "type": "wandbild_ready",
-        "preview_url": f"/{base_path}/output.png",
-        "svg_url": f"/{base_path}/output.svg"
+        "preview_url": f"{base_url}/static/output.png",
+        "svg_url": f"{base_url}/static/output.svg"
     })
+    else:
+        return render_template("index.html", result=True,
+                               width_cm=width_cm,
+                               height_cm=height_cm,
+                               price=price,
+                               image_uploaded=True)
 
 @app.route("/generate", methods=["POST"])
 def generate():

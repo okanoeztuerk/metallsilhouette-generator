@@ -1,13 +1,51 @@
 import os
 import cv2
 import numpy as np
-from flask import Flask, render_template, request, session, jsonify
+from flask import Flask, render_template, request, session, jsonify, abort
 from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
-
 import uuid
+import hmac, hashlib
+
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
+SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
+SHOPIFY_SECRET = os.environ['SHOPIFY_WEBHOOK_SECRET']
+
+
+
+
+
+def verify_hmac(data, hmac_header):
+    hm = hmac.new(SHOPIFY_SECRET.encode(), data, hashlib.sha256)
+    return hmac.compare_digest(hm.hexdigest(), hmac_header)
+
+@app.route('/api/webhook/orders/create', methods=['POST'])
+def orders_create_webhook():
+    # 1) HMAC prüfen
+    hmac_header = request.headers.get('X-Shopify-Hmac-Sha256', '')
+    raw = request.get_data()
+    if not verify_hmac(raw, hmac_header):
+        return abort(401)
+
+    # 2) Payload parsen
+    order = request.get_json()
+    order_id = order['id']
+
+    # 3) Zeilen durchgehen
+    for item in order.get('line_items', []):
+        uid = None
+        for k,v in item.get('properties', []):
+            if k == 'ImageUID':
+                uid = v
+        if uid:
+            # 4) Dateien verschieben oder in DB speichern
+            src = os.path.join('static', 'generated', uid)
+            dest = os.path.join('static', 'orders', str(order_id), uid)
+            os.makedirs(dest, exist_ok=True)
+            for fn in ['input.jpg','preview.png','output.png','output.svg']:
+                shutil.move(os.path.join(src, fn), os.path.join(dest, fn))
+    return '', 200
 
 @app.route("/", methods=["GET"])
 def index():
@@ -18,18 +56,180 @@ def index():
 def widget():
     return render_template("widget.html")
 
+def process_image(input_path: str, base_dir: str, width_cm: float, color: str, shape_type: str):
+    """
+    Lädt input_path, wendet deine k-means Segmentierung,
+    Punkt-/Form-Zeichnung und SVG-Ausgabe an und speichert:
+      - preview.png  (für Vorschau)
+      - output.png   (reines Wandbild-PNG)
+      - output.svg   (reines Wandbild-SVG)
+    alles unter base_dir.
+    """
+
+    # === 1) Bild laden & segmentieren ===
+    image_bgr = cv2.imread(input_path)
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    h0, w0 = image_rgb.shape[:2]
+    image_resized = cv2.resize(image_rgb, (512, int(h0 * 512 / w0)))
+    lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
+    pixels = lab.reshape((-1,3)).astype(np.float32)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0)
+    _, labels, centers = cv2.kmeans(pixels, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+    segmented = labels.flatten().reshape(image_resized.shape[:2])
+
+    mask = np.zeros_like(segmented, dtype=np.uint8)
+    for i, c in enumerate(centers):
+        l,a,b = c
+        if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
+            mask[segmented == i] = 255
+
+    h, w = mask.shape
+    coords = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+
+    # === 2) PNG mit Punkten/Formen zeichnen ===
+    img = Image.new("RGBA", (w,h), (*ImageColor.getrgb(color),255))
+    draw = ImageDraw.Draw(img)
+    occupied = np.zeros((h,w), dtype=bool)
+
+    # Konturen-Punktwolken
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        for pt in cnt[::2]:
+            x,y = pt[0]
+            dx,dy = x - w//2, y - h//2
+            dist = np.hypot(dx,dy)
+            norm = dist / np.hypot(w//2, h//2)
+            r = int(1 + (1-norm)*3)
+            s = r+1
+            if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
+                # je nach shape_type
+                if shape_type == "circle":
+                    draw.ellipse((x-r,y-r, x+r,y+r), fill=(255,255,255,0))
+                # ... hier kannst du "square","triangle","realHeart",etc. ergänzen ...
+                occupied[y-s:y+s,x-s:x+s] = True
+
+    # Fülle weitere zufällige Punkte
+    count=0
+    for y,x in coords:
+        if count>2000: break
+        r = np.random.randint(1,4)
+        s = r+1
+        if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
+            draw.ellipse((x-r,y-r,x+r,y+r), fill=(255,255,255,0))
+            occupied[y-s:y+s,x-s:x+s] = True
+            count+=1
+
+    # Rahmen
+    draw.rectangle([0,0,w-1,h-1], outline=ImageColor.getrgb(color), width=15)
+
+    # PNG speichern
+    output_png = os.path.join(base_dir, "output.png")
+    img.save(output_png)
+
+    # === 3) SVG erzeugen ===
+    dwg = svgwrite.Drawing(os.path.join(base_dir, "output.svg"), size=(w,h))
+    occupied_svg = np.zeros((h,w), dtype=bool)
+    count = 0
+    for cnt in contours:
+        for pt in cnt[::2]:
+            x,y = pt[0]
+            dx,dy = x - w//2, y - h//2
+            dist = np.hypot(dx,dy)
+            norm = dist / np.hypot(w//2, h//2)
+            radius = int(1+(1-norm)*3)
+            buffer = radius+1
+            x1,y1,x2,y2 = x-buffer,y-buffer,x+buffer,y+buffer
+            if 0<=x1 and 0<=y1 and x2<w and y2<h and not occupied_svg[y1:y2,x1:x2].any():
+                dwg.add(dwg.circle(center=(x,y), r=radius, fill='black', stroke='none'))
+                occupied_svg[y1:y2,x1:x2] = True
+                count+=1
+    dwg.save()
+
+    # === 4) Vorschau mit Hintergrund erzeugen ===
+    def create_preview2(fg_path, bg_path, width_cm_real, preview_path):
+        background = Image.open(bg_path).convert("RGBA")
+        foreground = Image.open(fg_path).convert("RGBA")
+        bg_w, bg_h = background.size
+        wand_pixel = int(bg_w * 0.75)
+        ppcm = wand_pixel / 200.0
+        new_w = int(width_cm_real * ppcm)
+        new_h = int(new_w * foreground.height / foreground.width)
+        fg_res = foreground.resize((new_w,new_h), Image.LANCZOS)
+        pos_x = (bg_w-new_w)//2
+        pos_y = int(bg_h*0.5) - new_h - 20
+        draw_v = ImageDraw.Draw(fg_res)
+        draw_v.rectangle([0,0,new_w-1,new_h-1], outline=ImageColor.getrgb(color), width=6)
+        background.paste(fg_res, (pos_x,pos_y), fg_res)
+        background.convert("RGB").save(preview_path)
+
+    preview_png = os.path.join(base_dir, "preview.png")
+    create_preview2(output_png, "static/background.jpg", width_cm, preview_png)
+
+    return {
+        "preview": preview_png,
+        "png":      output_png,
+        "svg":      os.path.join(base_dir, "output.svg")
+    }
 
 @app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
-    generate()
+    # 1) Parameter auslesen
+    width_cm   = float(request.form["width_cm"])
+    color      = request.form["color"]
+    shape_type = request.form["shape"]
+
+    # 2) Neue UUID und Verzeichnis anlegen
+    image_uid = str(uuid.uuid4())
+    base_dir = os.path.join("static", "generated", image_uid)
+    os.makedirs(base_dir, exist_ok=True)
+
+    # 3) Eingabebild speichern
+    file = request.files["image"]
+    input_path = os.path.join(base_dir, "input.jpg")
+    file.save(input_path)
+
+    # 4) Bildverarbeitung (PNG, SVG, Vorschau) auslagern
+    paths = process_image(input_path, base_dir, width_cm, color, shape_type)
+
+    # 5) Absolute URLs zusammensetzen und zurückgeben
     base_url = request.url_root.rstrip("/")
     return jsonify({
         "type": "wandbild_ready",
-        "output_preview_url": f"{base_url}/static/preview.png",
-        "output_png_url": f"{base_url}/static/output.png",
-        "output_svg_url": f"{base_url}/static/output.svg"
+        "output_preview_url": f"{base_url}/{paths['preview']}",
+        "output_png_url":     f"{base_url}/{paths['png']}",
+        "output_svg_url":     f"{base_url}/{paths['svg']}",
+        "image_uid":          image_uid
     })
 
+
+@app.route("/api/generate-shopify", methods=["POST"])
+def generate_shopify():
+    # 1) Neue UUID
+    image_uid = str(uuid.uuid4())
+    base_dir = os.path.join("static", "generated", image_uid)
+    os.makedirs(base_dir, exist_ok=True)
+
+    # 2) Eingabedatei speichern
+    file = request.files["image"]
+    in_path = os.path.join(base_dir, "input.jpg")
+    file.save(in_path)
+
+    # 3) Bild verarbeiten (Preview, PNG, SVG)
+    #    Hier rufst du deine bestehende generate()-Logik so auf,
+    #    dass sie unter base_dir schreibt:
+    process_image(in_path, base_dir)  # implementiere process_image entsprechend
+
+    # 4) Absolute Basis-URL
+    base_url = request.url_root.rstrip("/")
+
+    return jsonify({
+        "type": "wandbild_ready",
+        "output_preview_url": f"{base_url}/{base_dir}/preview.png",
+        "output_png_url":     f"{base_url}/{base_dir}/output.png",
+        "output_svg_url":     f"{base_url}/{base_dir}/output.svg",
+        "image_uid": image_uid
+    })
 
 @app.route("/generate", methods=["POST"])
 def generate():

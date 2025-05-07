@@ -35,7 +35,7 @@
   </style>
 </head>
 <body>
-  <h2>Wandbild gestalten</h2>
+  <h2>Gestalte deine Leinwand aus Metall:</h2>
   <form id="konfigurator-form">
     <label>Bild hochladen:</label>
     <input type="file" name="image" required>
@@ -63,39 +63,27 @@
     <img id="preview" src="" alt="Vorschau">
   </div>
 
-  <script>
-    const preview = document.getElementById("preview");
-    let scale = 1;
-
+<!-- ... dein bestehendes widget.html ... -->
+<script>
     document.getElementById("konfigurator-form").addEventListener("submit", async function(e) {
       e.preventDefault();
-
       const formData = new FormData(e.target);
-      const response = await fetch("/api/generate-shopify", {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await response.json();
-      document.getElementById("preview").src = data.output_preview_url;
-
-
-// Sende Vorschau-Infos an Shopify-Seite (Elternseite)
-window.parent.postMessage({
+      const resp = await fetch("/api/generate-shopify", { method:"POST", body: formData });
+      const data = await resp.json();
+  
+      // Vorschau anzeigen
+      document.getElementById("preview").src = data.output_preview_url + "?t=" + Date.now();
+  
+      // postMessage an parent
+      window.parent.postMessage({
         type: "wandbild_ready",
         output_preview_url: data.output_preview_url,
-        output_png_url: data.output_png_url,
-        output_svg_url: data.output_svg_url
+        output_png_url:     data.output_png_url,
+        output_svg_url:     data.output_svg_url,
+        image_uid:          data.image_uid    // ← NEU!
       }, "*");
     });
-
-    // Zoom per Mausrad
-    document.getElementById("preview-wrapper").addEventListener("wheel", function(e) {
-      e.preventDefault();
-      scale += e.deltaY * -0.001;
-      scale = Math.min(Math.max(1, scale), 3);
-      preview.style.transform = `scale(${scale})`;
-    });
   </script>
+  
 </body>
 </html>

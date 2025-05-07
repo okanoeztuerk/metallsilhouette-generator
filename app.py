@@ -10,7 +10,6 @@ import hmac, hashlib
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
-SHOPIFY_SECRET = os.environ['SHOPIFY_WEBHOOK_SECRET']
 
 
 

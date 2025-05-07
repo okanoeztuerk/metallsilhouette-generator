@@ -21,6 +21,7 @@ def widget():
 
 @app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
+    generate()
     base_url = request.url_root.rstrip("/")
     return jsonify({
         "type": "wandbild_ready",

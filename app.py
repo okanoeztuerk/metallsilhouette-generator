@@ -18,9 +18,9 @@ def index():
 def widget():
     return render_template("widget.html")
 
-@app.route("/generate", methods=["POST"])
+
 @app.route("/api/generate-shopify", methods=["POST"])
-def generate():
+def generate_shopify():
     file = request.files["image"]
     width_cm = float(request.form["width_cm"])
     color = request.form["color"]

@@ -9,81 +9,107 @@
       background: #fdfdfd;
       padding: 20px;
     }
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 0.25rem;
+    }
     input, select, button {
-      margin-top: 10px;
       width: 100%;
       padding: 8px;
+      font-size: 1rem;
+      margin-top: 0.25rem;
+      box-sizing: border-box;
     }
-    #preview-wrapper {
-      margin-top: 20px;
-      position: relative;
-      width: 100%;
-      max-width: 500px;
-      overflow: hidden;
+    button {
+      background: #2c7a7b;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
     }
-    #background, #preview {
-      width: 100%;
-      display: block;
-      transition: transform 0.3s ease;
-    }
-    #preview {
-      position: absolute;
-      top: 0;
-      left: 0;
-      pointer-events: none;
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
     }
   </style>
 </head>
 <body>
-  <h2>Gestalte deine Leinwand aus Metall:</h2>
-  <form id="konfigurator-form">
-    <label>Bild hochladen:</label>
-    <input type="file" name="image" required>
-
-    <label>Farbe:</label>
-    <input type="color" name="color" value="#98ffcc">
-
-    <label>Form:</label>
-    <select name="shape">
-      <option value="circle">Kreis</option>
-      <option value="square">Quadrat</option>
-      <option value="realHeart">Herz</option>
-      <option value="S">S</option>
-      <option value="I">I</option>
-    </select>
-
-    <label>Breite (cm):</label>
-    <input type="number" name="width_cm" value="100" min="30" max="200" required>
-
-    <button type="submit">Vorschau generieren</button>
+  <h2>Wandbild konfigurieren</h2>
+  <form id="konfigurator-form" enctype="multipart/form-data">
+    <div class="form-group">
+      <label for="image">Bild hochladen</label>
+      <input type="file" name="image" id="image" accept="image/*" required>
+    </div>
+    <div class="form-group">
+      <label for="color">Farbe</label>
+      <input type="color" name="color" id="color" value="#98ffcc">
+    </div>
+    <div class="form-group">
+      <label for="shape">Form</label>
+      <select name="shape" id="shape">
+        <option value="circle">Kreis</option>
+        <option value="square">Quadrat</option>
+        <option value="realHeart">Herz</option>
+        <option value="S">S</option>
+        <option value="I">I</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="width_cm">Breite (cm)</label>
+      <input type="number" name="width_cm" id="width_cm" value="100" min="30" max="200" required>
+    </div>
+    <button type="submit" id="generate-btn">Vorschau generieren</button>
   </form>
 
-  <div id="preview-wrapper">
-    <img id="background" src="/static/background.jpg" alt="Wand">
-    <img id="preview" src="" alt="Vorschau">
-  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('konfigurator-form');
+      const btn  = document.getElementById('generate-btn');
 
-<!-- ... dein bestehendes widget.html ... -->
-<script>
-    document.getElementById("konfigurator-form").addEventListener("submit", async function(e) {
-      e.preventDefault();
-      const formData = new FormData(e.target);
-      const resp = await fetch("/api/generate-shopify", { method:"POST", body: formData });
-      const data = await resp.json();
-  
-      // Vorschau anzeigen
-      document.getElementById("preview").src = data.output_preview_url + "?t=" + Date.now();
-  
-      // postMessage an parent
-      window.parent.postMessage({
-        type: "wandbild_ready",
-        output_preview_url: data.output_preview_url,
-        output_png_url:     data.output_png_url,
-        output_svg_url:     data.output_svg_url,
-        image_uid:          data.image_uid    // ← NEU!
-      }, "*");
+      if (!form) {
+        console.error('❌ Formular #konfigurator-form nicht gefunden!');
+        return;
+      }
+      console.log('✅ Formular geladen, warte auf Submit…');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = 'Lade…';
+        console.log('⏳ Sende Formular an /api/generate-shopify');
+
+        try {
+          const resp = await fetch('/api/generate-shopify', {
+            method: 'POST',
+            body: new FormData(form)
+          });
+          if (!resp.ok) throw new Error(`Status ${resp.status}`);
+          const data = await resp.json();
+          console.log('✅ Antwort erhalten:', data);
+
+          // Nachricht ans Parent-Window
+          window.parent.postMessage({
+            type:              'wandbild_ready',
+            output_preview_url: data.output_preview_url,
+            output_png_url:     data.output_png_url,
+            output_svg_url:     data.output_svg_url,
+            image_uid:          data.image_uid
+          }, '*');
+
+          btn.textContent = 'Vorschau generiert';
+        } catch (err) {
+          console.error('❌ Fehler beim Generieren:', err);
+          alert('Fehler beim Generieren – siehe Konsole.');
+          btn.textContent = 'Vorschau generieren';
+        } finally {
+          btn.disabled = false;
+        }
+      });
     });
   </script>
-  
 </body>
 </html>

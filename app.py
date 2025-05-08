@@ -149,9 +149,34 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
         r = np.random.randint(1,4)
         s = r+1
         if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
-            draw.ellipse((x-r,y-r,x+r,y+r), fill=(255,255,255,0))
-            occupied[y-s:y+s,x-s:x+s] = True
-            count+=1
+            if shape_type == "circle":
+                    draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                elif shape_type == "square":
+                    draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                elif shape_type == "triangle":
+                    draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
+                elif shape_type == "sand":
+                    heart = Image.new("L", (2*r+2, 2*r+2), 0)
+                    d = ImageDraw.Draw(heart)
+                    d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
+                    img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                elif shape_type == "realHeart":
+                    heart = Image.new("L", (2*r+4, 2*r+4), 0)
+                    hd = ImageDraw.Draw(heart)
+                    hd.polygon([
+                        (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
+                        (2*r, r//2), (3*r//2, 0), (r+2, r//2)
+                    ], fill=255)
+                    img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                elif shape_type == "S":
+                    s_path = Image.new("L", (2*r+4, 3*r+4), 0)
+                    d = ImageDraw.Draw(s_path)
+                    d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
+                    d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
+                    img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
+                elif shape_type == "I":
+                    draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
+                occupied[y-s:y+s, x-s:x+s] = True
 
     # Rahmen
     border_thickness = 15

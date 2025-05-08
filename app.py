@@ -156,7 +156,7 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
     # Rahmen
     border_thickness = 15
     draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(color), width=border_thickness)
-    img.save("static/output.png")
+    
 
 
     # === SVG erzeugen ===
@@ -203,8 +203,13 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
                         draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
                     occupied[y-s:y+s, x-s:x+s] = True
 
+    
+    preview_png = os.path.join(base_dir, "preview.png")
+    output_png = os.path.join(base_dir, "output.png")
+    output_svg = os.path.join(base_dir, "output.svg")
+    
     dwg.save()
-
+    img.save(output_png)
 
     # === 4) Vorschau mit Hintergrund erzeugen ===
     def create_preview2(fg_path, bg_path, width_cm_real, preview_path):
@@ -223,9 +228,7 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
         background.paste(fg_res, (pos_x,pos_y), fg_res)
         background.convert("RGB").save(preview_path)
 
-    preview_png = os.path.join(base_dir, "preview.png")
-    output_png = os.path.join(base_dir, "output.png")
-    output_svg = os.path.join(base_dir, "output.svg")
+
     create_preview2(output_png, "static/background.jpg", width_cm, preview_png)
 
     return {

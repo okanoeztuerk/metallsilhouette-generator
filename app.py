@@ -12,7 +12,7 @@ import os
 BASE_APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Definiere STATIC_DIR direkt dort, wo Dein static-Ordner wirklich liegt
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(BASE_APP_DIR, "static")
 
 app = Flask(
     __name__,

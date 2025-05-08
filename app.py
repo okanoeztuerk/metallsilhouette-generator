@@ -149,7 +149,8 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
         r = np.random.randint(1,4)
         s = r+1
         if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
-            if shape_type == "circle":
+            if not occupied[y-s:y+s, x-s:x+s].any():
+                if shape_type == "circle":
                     draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
                 elif shape_type == "square":
                     draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
@@ -177,7 +178,7 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
                 elif shape_type == "I":
                     draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
                 occupied[y-s:y+s, x-s:x+s] = True
-
+                count+=1
     # Rahmen
     border_thickness = 15
     draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(color), width=border_thickness)

@@ -94,19 +94,43 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
     # Konturen-Punktwolken
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for cnt in contours:
-        for pt in cnt[::2]:
-            x,y = pt[0]
-            dx,dy = x - w//2, y - h//2
-            dist = np.hypot(dx,dy)
-            norm = dist / np.hypot(w//2, h//2)
-            r = int(1 + (1-norm)*3)
-            s = r+1
-            if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
-                # je nach shape_type
-                if shape_type == "circle":
-                    draw.ellipse((x-r,y-r, x+r,y+r), fill=(255,255,255,0))
-                # ... hier kannst du "square","triangle","realHeart",etc. ergänzen ...
-                occupied[y-s:y+s,x-s:x+s] = True
+        for i, pt in enumerate(cnt[::2]):
+            x, y = pt[0]
+            dx, dy = x - w // 2, y - h // 2
+            dist = np.sqrt(dx**2 + dy**2)
+            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
+            r = int(1 + (1 - norm) * 3)
+            s = r + 1
+            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+                if not occupied[y-s:y+s, x-s:x+s].any():
+                    if shape_type == "circle":
+                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "square":
+                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "triangle":
+                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
+                    elif shape_type == "sand":
+                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
+                        d = ImageDraw.Draw(heart)
+                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "realHeart":
+                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
+                        hd = ImageDraw.Draw(heart)
+                        hd.polygon([
+                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
+                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
+                        ], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "S":
+                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
+                        d = ImageDraw.Draw(s_path)
+                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
+                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
+                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
+                    elif shape_type == "I":
+                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
+                    occupied[y-s:y+s, x-s:x+s] = True
 
     # Fülle weitere zufällige Punkte
     count=0
@@ -120,30 +144,57 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
             count+=1
 
     # Rahmen
-    draw.rectangle([0,0,w-1,h-1], outline=ImageColor.getrgb(color), width=15)
+    border_thickness = 15
+    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
+    img.save("static/output.png")
 
-    # PNG speichern
-    output_png = os.path.join(base_dir, "output.png")
-    img.save(output_png)
 
-    # === 3) SVG erzeugen ===
-    dwg = svgwrite.Drawing(os.path.join(base_dir, "output.svg"), size=(w,h))
-    occupied_svg = np.zeros((h,w), dtype=bool)
+    # === SVG erzeugen ===
+    dwg = svgwrite.Drawing(os.path.join(base_dir, "output.svg"), size=(w, h))
+    occupied_svg = np.zeros((h, w), dtype=bool)
     count = 0
+
     for cnt in contours:
-        for pt in cnt[::2]:
-            x,y = pt[0]
-            dx,dy = x - w//2, y - h//2
-            dist = np.hypot(dx,dy)
-            norm = dist / np.hypot(w//2, h//2)
-            radius = int(1+(1-norm)*3)
-            buffer = radius+1
-            x1,y1,x2,y2 = x-buffer,y-buffer,x+buffer,y+buffer
-            if 0<=x1 and 0<=y1 and x2<w and y2<h and not occupied_svg[y1:y2,x1:x2].any():
-                dwg.add(dwg.circle(center=(x,y), r=radius, fill='black', stroke='none'))
-                occupied_svg[y1:y2,x1:x2] = True
-                count+=1
+        for i, pt in enumerate(cnt[::2]):
+            x, y = pt[0]
+            dx, dy = x - w // 2, y - h // 2
+            dist = np.sqrt(dx**2 + dy**2)
+            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
+            r = int(1 + (1 - norm) * 3)
+            s = r + 1
+            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+                if not occupied[y-s:y+s, x-s:x+s].any():
+                    if shape_type == "circle":
+                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "square":
+                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
+                    elif shape_type == "triangle":
+                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
+                    elif shape_type == "sand":
+                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
+                        d = ImageDraw.Draw(heart)
+                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "realHeart":
+                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
+                        hd = ImageDraw.Draw(heart)
+                        hd.polygon([
+                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
+                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
+                        ], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
+                    elif shape_type == "S":
+                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
+                        d = ImageDraw.Draw(s_path)
+                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
+                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
+                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
+                    elif shape_type == "I":
+                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
+                    occupied[y-s:y+s, x-s:x+s] = True
+
     dwg.save()
+
 
     # === 4) Vorschau mit Hintergrund erzeugen ===
     def create_preview2(fg_path, bg_path, width_cm_real, preview_path):

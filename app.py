@@ -214,12 +214,14 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
         background.convert("RGB").save(preview_path)
 
     preview_png = os.path.join(base_dir, "preview.png")
+    output_png = os.path.join(base_dir, "output.png")
+    output_svg = os.path.join(base_dir, "output.svg")
     create_preview2("static/output.png", "static/background.jpg", width_cm, preview_png)
 
     return {
         "preview": preview_png,
         "png":      output_png,
-        "svg":      os.path.join(base_dir, "output.svg")
+        "svg":      output_svg
     }
 
 @app.route("/api/generate-shopify", methods=["POST"])

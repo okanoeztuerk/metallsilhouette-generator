@@ -216,7 +216,7 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
     preview_png = os.path.join(base_dir, "preview.png")
     output_png = os.path.join(base_dir, "output.png")
     output_svg = os.path.join(base_dir, "output.svg")
-    create_preview2("static/output.png", "static/background.jpg", width_cm, preview_png)
+    create_preview2(output_png, "static/background.jpg", width_cm, preview_png)
 
     return {
         "preview": preview_png,
@@ -234,8 +234,14 @@ def generate_shopify():
 
         # 2) Neue UUID und Verzeichnis anlegen
         image_uid = str(uuid.uuid4())
-        base_dir = os.path.join("static", "generated", image_uid)
-        os.makedirs(base_dir, exist_ok=True)
+        # static/generated liegt bereits in deinem Projekt
+        generated_parent = os.path.join(current_app.static_folder, "generated")
+        if not os.path.isdir(generated_parent):
+            # Sicherheit: falls es doch fehlt, meldet es dir
+            raise RuntimeError(f"Erwarteter Ordner fehlt: {generated_parent}")
+        # lege nur den neuen ID-Ordner an
+        base_dir = os.path.join(generated_parent, image_uid)
+        os.mkdir(base_dir)
 
         # 3) Eingabebild speichern
         file = request.files.get("image")

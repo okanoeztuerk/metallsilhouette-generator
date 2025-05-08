@@ -254,12 +254,19 @@ def generate_shopify():
 
         # 6) Absolute URLs zusammensetzen und zurückgeben
         base_url = request.url_root.rstrip("/")
+        # Am Ende:
         return jsonify({
             "type": "wandbild_ready",
-            "output_preview_url": f"{base_url}/{paths['preview']}",
-            "output_png_url":     f"{base_url}/{paths['png']}",
-            "output_svg_url":     f"{base_url}/{paths['svg']}",
-            "image_uid":          image_uid
+            "output_preview_url": url_for('static',
+                                        filename=f"generated/{image_uid}/preview.png",
+                                        _external=True),
+            "output_png_url":     url_for('static',
+                                        filename=f"generated/{image_uid}/output.png",
+                                        _external=True),
+            "output_svg_url":     url_for('static',
+                                        filename=f"generated/{image_uid}/output.svg",
+                                        _external=True),
+            "image_uid": image_uid
         })
 
     except Exception as e:

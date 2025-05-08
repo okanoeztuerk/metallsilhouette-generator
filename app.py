@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
 import uuid
 import hmac, hashlib
-
+import os
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
@@ -235,7 +235,9 @@ def generate_shopify():
         # 2) Neue UUID und Verzeichnis anlegen
         image_uid = str(uuid.uuid4())
         # static/generated liegt bereits in deinem Projekt
-        generated_parent = os.path.join(app.static_folder, "generated")
+        APP_DIR = os.path.dirname(os.path.abspath(__file__))
+        generated_parent = os.path.join(APP_DIR, "static", "generated")
+        
         if not os.path.isdir(generated_parent):
             # Sicherheit: falls es doch fehlt, meldet es dir
             raise RuntimeError(f"Erwarteter Ordner fehlt: {generated_parent}")

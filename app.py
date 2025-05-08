@@ -7,11 +7,21 @@ import svgwrite
 import uuid
 import hmac, hashlib
 import os
-app = Flask(__name__)
+
+# Errechne den Ordner, in dem app.py liegt
+BASE_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Definiere STATIC_DIR direkt dort, wo Dein static-Ordner wirklich liegt
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+app = Flask(
+    __name__,
+    static_folder=STATIC_DIR,
+    static_url_path="/static"
+)
+
 app.secret_key = "supersecretkey"
 SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
-
-
 
 
 
@@ -235,15 +245,13 @@ def generate_shopify():
         # 2) Neue UUID und Verzeichnis anlegen
         image_uid = str(uuid.uuid4())
         # static/generated liegt bereits in deinem Projekt
-        APP_DIR = os.path.dirname(os.path.abspath(__file__))
-        generated_parent = os.path.join(APP_DIR, "static", "generated")
         
-        if not os.path.isdir(generated_parent):
-            # Sicherheit: falls es doch fehlt, meldet es dir
-            raise RuntimeError(f"Erwarteter Ordner fehlt: {generated_parent}")
-        # lege nur den neuen ID-Ordner an
+        # Erstelle nur den neuen ImageUID-Unterordner unter dem echten STATIC_DIR/generated
+        generated_parent = os.path.join(STATIC_DIR, "generated")
+        os.makedirs(generated_parent, exist_ok=True)
+
         base_dir = os.path.join(generated_parent, image_uid)
-        os.mkdir(base_dir)
+        os.makedirs(base_dir, exist_ok=True)
 
         # 3) Eingabebild speichern
         file = request.files.get("image")

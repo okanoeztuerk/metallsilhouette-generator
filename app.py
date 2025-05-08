@@ -235,7 +235,7 @@ def generate_shopify():
         # 2) Neue UUID und Verzeichnis anlegen
         image_uid = str(uuid.uuid4())
         # static/generated liegt bereits in deinem Projekt
-        generated_parent = os.path.join(current_app.static_folder, "generated")
+        generated_parent = os.path.join(app.static_folder, "generated")
         if not os.path.isdir(generated_parent):
             # Sicherheit: falls es doch fehlt, meldet es dir
             raise RuntimeError(f"Erwarteter Ordner fehlt: {generated_parent}")

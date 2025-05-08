@@ -145,7 +145,7 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
 
     # Rahmen
     border_thickness = 15
-    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
+    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(color), width=border_thickness)
     img.save("static/output.png")
 
 

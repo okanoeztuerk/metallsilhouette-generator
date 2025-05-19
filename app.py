@@ -1,28 +1,264 @@
 import os
+import uuid
 import cv2
 import numpy as np
-from flask import Flask, render_template, request, session, jsonify, abort,url_for
+import torch
+import torchvision.transforms as T
+from flask import Flask, render_template, request, session, jsonify, url_for
 from PIL import Image, ImageDraw, ImageColor, ImageFilter
 import svgwrite
-import uuid
-import hmac, hashlib
-import os
 
-# Errechne den Ordner, in dem app.py liegt
-BASE_APP_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Definiere STATIC_DIR direkt dort, wo Dein static-Ordner wirklich liegt
-STATIC_DIR = os.path.join(BASE_APP_DIR, "static")
+# === 1) Pfade & Flask-Setup ===
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR  = os.path.join(BASE_DIR, "static")
 
 app = Flask(
     __name__,
     static_folder=STATIC_DIR,
     static_url_path="/static"
 )
-
 app.secret_key = "supersecretkey"
-SHOPIFY_WEBHOOK_SECRET = os.environ.get("SHOPIFY_WEBHOOK_SECRET", "")
 
+# === 2) U²-Net laden für KI-Segmentierung ===
+u2net = torch.hub.load('NathanUA/U-2-Net', 'u2net', pretrained=True)
+u2net.eval()
+to_tensor = T.Compose([
+    T.ToTensor(),
+    T.Resize((320, 320)),
+])
+
+def segment_foreground(img_bgr: np.ndarray) -> np.ndarray:
+    """
+    Erzeugt eine 0/255-Maske für Personen/Tiere mit U²-Net.
+    """
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    inp     = to_tensor(img_rgb).unsqueeze(0)  # [1,3,320,320]
+    with torch.no_grad():
+        pred = u2net(inp)[0][0].cpu().numpy()  # [H,W] in [0,1]
+    mask_small = cv2.resize(pred, (img_bgr.shape[1], img_bgr.shape[0]))
+    mask_bin   = (mask_small > 0.5).astype(np.uint8) * 255
+    # Morphology-Glätten
+    kernel = np.ones((5,5), np.uint8)
+    mask_bin = cv2.morphologyEx(mask_bin, cv2.MORPH_CLOSE, kernel, iterations=2)
+    mask_bin = cv2.morphologyEx(mask_bin, cv2.MORPH_OPEN,  kernel, iterations=1)
+    return mask_bin
+
+def create_preview(fg_path, bg_path, width_cm_real, preview_path, color):
+    """
+    Legt output.png über background.jpg und erzeugt preview.png.
+    """
+    background = Image.open(bg_path).convert("RGBA")
+    foreground = Image.open(fg_path).convert("RGBA")
+    bg_w, bg_h = background.size
+
+    wand_pixel = int(bg_w * 0.75)
+    ppcm       = wand_pixel / 200.0
+    new_w      = int(width_cm_real * ppcm)
+    new_h      = int(new_w * foreground.height / foreground.width)
+
+    fg_res = foreground.resize((new_w, new_h), Image.LANCZOS)
+    pos_x  = (bg_w - new_w)//2
+    pos_y  = int(bg_h*0.5) - new_h - 20
+
+    draw_v = ImageDraw.Draw(fg_res)
+    draw_v.rectangle(
+        [0, 0, new_w-1, new_h-1],
+        outline=ImageColor.getrgb(color),
+        width=6
+    )
+
+    background.paste(fg_res, (pos_x, pos_y), fg_res)
+    background.convert("RGB").save(preview_path)
+
+def process_image(input_path: str, base_dir: str, width_cm: float, color: str, shape_type: str) -> dict:
+    """
+    1) KI-Segmentierung
+    2) Punkt-/Form-Pipeline auf Maske
+    3) Speichern output.png + output.svg
+    4) Vorschau preview.png
+    """
+    # --- 1) Maske ---
+    img_bgr = cv2.imread(input_path)
+    mask    = segment_foreground(img_bgr)
+    h, w    = mask.shape
+    coords  = np.argwhere(mask == 255)
+    np.random.shuffle(coords)
+
+    # --- 2) PNG mit Formen ---
+    img      = Image.new("RGBA", (w, h), (*ImageColor.getrgb(color), 255))
+    draw     = ImageDraw.Draw(img)
+    occupied = np.zeros((h, w), dtype=bool)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        for pt in cnt[::2]:
+            x, y = pt[0]
+            dx, dy = x - w//2, y - h//2
+            dist = np.hypot(dx, dy)
+            norm = dist / np.hypot(w//2, h//2)
+            r = int(1 + (1 - norm) * 3)
+            s = r + 2
+            x1, y1, x2, y2 = x-s, y-s, x+s, y+s
+
+            if 0 <= x1 < w and 0 <= y1 < h and x2 < w and y2 < h:
+                if not occupied[y1:y2, x1:x2].any():
+                    # alle shape-Typen
+                    if shape_type == "circle":
+                        draw.ellipse((x-r, y-r, x+r, y+r), fill=(255,255,255,0))
+                    elif shape_type == "square":
+                        draw.rectangle((x-r, y-r, x+r, y+r), fill=(255,255,255,0))
+                    elif shape_type == "triangle":
+                        pts = [(x, y-r), (x-r, y+r), (x+r, y+r)]
+                        draw.polygon(pts, fill=(255,255,255,0))
+                    elif shape_type == "realHeart":
+                        heart = Image.new("L", (2*r, 2*r), 0)
+                        hd    = ImageDraw.Draw(heart)
+                        hd.pieslice([0,0,2*r,2*r], 180,360, fill=255)
+                        hd.polygon([(0,r),(r*2,r),(r,2*r)], fill=255)
+                        img.paste(Image.new("RGBA", heart.size, (255,255,255,0)),
+                                  (x-r, y-r), heart)
+                    elif shape_type == "S":
+                        s_path = Image.new("L", (2*r, 3*r), 0)
+                        sd     = ImageDraw.Draw(s_path)
+                        sd.arc([0,0,2*r,2*r], 0,180, fill=255)
+                        sd.arc([0,r,2*r,3*r], 180,360, fill=255)
+                        img.paste(Image.new("RGBA", s_path.size, (255,255,255,0)),
+                                  (x-r, y-r), s_path)
+                    elif shape_type == "I":
+                        draw.rectangle((x-r//3, y-r, x+r//3, y+r), fill=(255,255,255,0))
+
+                    occupied[y1:y2, x1:x2] = True
+
+    # Zufallspunkte
+    count = 0
+    for y, x in coords:
+        if count > 2000: break
+        r = np.random.randint(1, 4)
+        s = r + 1
+        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
+            if not occupied[y-s:y+s, x-s:x+s].any():
+                draw.ellipse((x-r, y-r, x+r, y+r), fill=(255,255,255,0))
+                occupied[y-s:y+s, x-s:x+s] = True
+                count += 1
+
+    # Rahmen
+    draw.rectangle([0,0,w-1,h-1], outline=ImageColor.getrgb(color), width=15)
+
+    # output.png
+    output_png = os.path.join(base_dir, "output.png")
+    img.save(output_png)
+
+    # --- 3) SVG ---
+    dwg = svgwrite.Drawing(os.path.join(base_dir, "output.svg"), size=(w, h))
+    occupied_svg = np.zeros((h, w), dtype=bool)
+    for cnt in contours:
+        for pt in cnt[::2]:
+            x, y = pt[0]
+            dx, dy = x - w//2, y - h//2
+            dist = np.hypot(dx, dy)
+            norm = dist / np.hypot(w//2, h//2)
+            radius = int(1 + (1 - norm) * 3)
+            buffer = radius + 1
+            x1, y1, x2, y2 = x-buffer, y-buffer, x+buffer, y+buffer
+            if 0 <= x1 < w and 0 <= y1 < h and x2 < w and y2 < h:
+                if not occupied_svg[y1:y2, x1:x2].any():
+                    dwg.add(dwg.circle(
+                        cx=float(x), cy=float(y), r=float(radius),
+                        fill='black', stroke='none'
+                    ))
+                    occupied_svg[y1:y2, x1:x2] = True
+    dwg.save()
+
+    # --- 4) Preview ---
+    preview_png = os.path.join(base_dir, "preview.png")
+    create_preview(
+        output_png,
+        os.path.join(app.static_folder, "background.jpg"),
+        width_cm,
+        preview_png,
+        color
+    )
+
+    return {"preview": preview_png, "png": output_png, "svg": dwg.filename}
+
+
+@app.route("/", methods=["GET"])
+def index():
+    return render_template("index.html", result=False)
+
+
+@app.route("/widget", methods=["GET"])
+def widget():
+    return render_template("widget.html")
+
+
+@app.route("/api/generate-shopify", methods=["POST"])
+def generate_shopify():
+    try:
+        # 1) Felder lesen
+        file        = request.files.get("image")
+        fmt         = request.form["format"]
+        orientation = request.form.get("orientation", "portrait")
+        color       = request.form["color"]
+        shape_type  = request.form["shape"]
+
+        if not file:
+            return jsonify({"error": "Kein Bild hochgeladen"}), 400
+
+        # 2) Format → cm
+        fmt_map = {"50x70":(50,70), "70x100":(70,100), "100x140":(100,140)}
+        if fmt not in fmt_map:
+            return jsonify({"error": f"Unbekanntes Format {fmt}"}), 400
+        w_cm, h_cm = fmt_map[fmt]
+        if orientation == "landscape":
+            w_cm, h_cm = h_cm, w_cm
+
+        # 3) Ordnerstruktur
+        image_uid = str(uuid.uuid4())
+        generated_parent = os.path.join(app.static_folder, "generated")
+        os.makedirs(generated_parent, exist_ok=True)
+        base_dir = os.path.join(generated_parent, image_uid)
+        os.makedirs(base_dir, exist_ok=True)
+
+        # 4) Input speichern
+        input_path = os.path.join(base_dir, "input.jpg")
+        file.save(input_path)
+
+        # 5) Center-Crop
+        img = Image.open(input_path)
+        orig_w, orig_h = img.size
+        tr = h_cm / w_cm
+        or_ = orig_h / orig_w
+        if or_ > tr:
+            new_h = int(tr * orig_w)
+            top   = (orig_h - new_h)//2
+            img = img.crop((0, top, orig_w, top + new_h))
+        else:
+            new_w = int(orig_h / tr)
+            left  = (orig_w - new_w)//2
+            img = img.crop((left, 0, left + new_w, orig_h))
+        img.save(input_path)
+
+        # 6) Prozessieren
+        paths = process_image(input_path, base_dir, w_cm, color, shape_type)
+
+        # 7) Antwort
+        return jsonify({
+            "type": "wandbild_ready",
+            "output_preview_url": url_for('static', filename=f"generated/{image_uid}/preview.png", _external=True),
+            "output_png_url":     url_for('static', filename=f"generated/{image_uid}/output.png",  _external=True),
+            "output_svg_url":     url_for('static', filename=f"generated/{image_uid}/output.svg",  _external=True),
+            "image_uid": image_uid
+        })
+
+    except Exception as e:
+        app.logger.exception("Fehler in /api/generate-shopify")
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
 
 
 def verify_hmac(data, hmac_header):
@@ -56,494 +292,3 @@ def orders_create_webhook():
                 shutil.move(os.path.join(src, fn), os.path.join(dest, fn))
     return '', 200
 
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html", result=False, image_uploaded=os.path.exists("static/upload.jpg"))
-
-
-@app.route("/widget")
-def widget():
-    return render_template("widget.html")
-
-def process_image(input_path: str, base_dir: str, width_cm: float, color: str, shape_type: str):
-    """
-    Lädt input_path, wendet deine k-means Segmentierung,
-    Punkt-/Form-Zeichnung und SVG-Ausgabe an und speichert:
-      - preview.png  (für Vorschau)
-      - output.png   (reines Wandbild-PNG)
-      - output.svg   (reines Wandbild-SVG)
-    alles unter base_dir.
-    """
-
-    # === 1) Bild laden & segmentieren ===
-    image_bgr = cv2.imread(input_path)
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    h0, w0 = image_rgb.shape[:2]
-    image_resized = cv2.resize(image_rgb, (512, int(h0 * 512 / w0)))
-    lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
-    pixels = lab.reshape((-1,3)).astype(np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0)
-    _, labels, centers = cv2.kmeans(pixels, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-    segmented = labels.flatten().reshape(image_resized.shape[:2])
-
-    mask = np.zeros_like(segmented, dtype=np.uint8)
-    for i, c in enumerate(centers):
-        l,a,b = c
-        if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
-            mask[segmented == i] = 255
-
-    h, w = mask.shape
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
-
-    # === 2) PNG mit Punkten/Formen zeichnen ===
-    img = Image.new("RGBA", (w,h), (*ImageColor.getrgb(color),255))
-    draw = ImageDraw.Draw(img)
-    occupied = np.zeros((h,w), dtype=bool)
-
-    # Konturen-Punktwolken
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    for cnt in contours:
-        for i, pt in enumerate(cnt[::2]):
-            x, y = pt[0]
-            dx, dy = x - w // 2, y - h // 2
-            dist = np.sqrt(dx**2 + dy**2)
-            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
-            r = int(1 + (1 - norm) * 3)
-            s = r + 1
-            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-                if not occupied[y-s:y+s, x-s:x+s].any():
-                    if shape_type == "circle":
-                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "square":
-                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "triangle":
-                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
-                    elif shape_type == "sand":
-                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
-                        d = ImageDraw.Draw(heart)
-                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "realHeart":
-                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
-                        hd = ImageDraw.Draw(heart)
-                        hd.polygon([
-                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
-                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
-                        ], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "S":
-                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
-                        d = ImageDraw.Draw(s_path)
-                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
-                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
-                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
-                    elif shape_type == "I":
-                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
-                    occupied[y-s:y+s, x-s:x+s] = True
-
-    # Fülle weitere zufällige Punkte
-    count=0
-    for y,x in coords:
-        if count>2000: break
-        r = np.random.randint(1,4)
-        s = r+1
-        if 0<=x-s and 0<=y-s and x+s<w and y+s<h and not occupied[y-s:y+s,x-s:x+s].any():
-            if not occupied[y-s:y+s, x-s:x+s].any():
-                if shape_type == "circle":
-                    draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                elif shape_type == "square":
-                    draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                elif shape_type == "triangle":
-                    draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
-                elif shape_type == "sand":
-                    heart = Image.new("L", (2*r+2, 2*r+2), 0)
-                    d = ImageDraw.Draw(heart)
-                    d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
-                    img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                elif shape_type == "realHeart":
-                    heart = Image.new("L", (2*r+4, 2*r+4), 0)
-                    hd = ImageDraw.Draw(heart)
-                    hd.polygon([
-                        (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
-                        (2*r, r//2), (3*r//2, 0), (r+2, r//2)
-                    ], fill=255)
-                    img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                elif shape_type == "S":
-                    s_path = Image.new("L", (2*r+4, 3*r+4), 0)
-                    d = ImageDraw.Draw(s_path)
-                    d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
-                    d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
-                    img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
-                elif shape_type == "I":
-                    draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
-                occupied[y-s:y+s, x-s:x+s] = True
-                count+=1
-    # Rahmen
-    border_thickness = 15
-    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(color), width=border_thickness)
-    
-
-
-    # === SVG erzeugen ===
-    dwg = svgwrite.Drawing(os.path.join(base_dir, "output.svg"), size=(w, h))
-    occupied_svg = np.zeros((h, w), dtype=bool)
-    count = 0
-
-    for cnt in contours:
-        for i, pt in enumerate(cnt[::2]):
-            x, y = pt[0]
-            dx, dy = x - w // 2, y - h // 2
-            dist = np.sqrt(dx**2 + dy**2)
-            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
-            r = int(1 + (1 - norm) * 3)
-            s = r + 1
-            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-                if not occupied[y-s:y+s, x-s:x+s].any():
-                    if shape_type == "circle":
-                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "square":
-                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "triangle":
-                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
-                    elif shape_type == "sand":
-                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
-                        d = ImageDraw.Draw(heart)
-                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "realHeart":
-                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
-                        hd = ImageDraw.Draw(heart)
-                        hd.polygon([
-                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
-                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
-                        ], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "S":
-                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
-                        d = ImageDraw.Draw(s_path)
-                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
-                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
-                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
-                    elif shape_type == "I":
-                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
-                    occupied[y-s:y+s, x-s:x+s] = True
-
-    
-    preview_png = os.path.join(base_dir, "preview.png")
-    output_png = os.path.join(base_dir, "output.png")
-    output_svg = os.path.join(base_dir, "output.svg")
-    
-    dwg.save()
-    img.save(output_png)
-
-    # === 4) Vorschau mit Hintergrund erzeugen ===
-    def create_preview2(fg_path, bg_path, width_cm_real, preview_path):
-        background = Image.open(bg_path).convert("RGBA")
-        foreground = Image.open(fg_path).convert("RGBA")
-        bg_w, bg_h = background.size
-        wand_pixel = int(bg_w * 0.75)
-        ppcm = wand_pixel / 200.0
-        new_w = int(width_cm_real * ppcm)
-        new_h = int(new_w * foreground.height / foreground.width)
-        fg_res = foreground.resize((new_w,new_h), Image.LANCZOS)
-        pos_x = (bg_w-new_w)//2
-        pos_y = int(bg_h*0.5) - new_h - 20
-        draw_v = ImageDraw.Draw(fg_res)
-        draw_v.rectangle([0,0,new_w-1,new_h-1], outline=ImageColor.getrgb(color), width=6)
-        background.paste(fg_res, (pos_x,pos_y), fg_res)
-        background.convert("RGB").save(preview_path)
-
-
-    create_preview2(output_png, "static/background.jpg", width_cm, preview_png)
-
-    return {
-        "preview": preview_png,
-        "png":      output_png,
-        "svg":      output_svg
-    }
-
-@app.route("/api/generate-shopify", methods=["POST"])
-def generate_shopify():
-    try:
-        # --- 1) Felder auslesen ---
-        file        = request.files.get("image")
-        fmt         = request.form["format"]            # z.B. "50x70"
-        orientation = request.form.get("orientation", "portrait")
-        color       = request.form["color"]
-        shape_type  = request.form["shape"]
-
-        if not file:
-            return jsonify({"error": "Kein Bild hochgeladen"}), 400
-
-        # --- 2) Format → cm-Werte ---
-        fmt_map = {
-            "50x70":   (50, 70),
-            "70x100":  (70, 100),
-            "100x140": (100, 140)
-        }
-        if fmt not in fmt_map:
-            return jsonify({"error": f"Unbekanntes Format {fmt}"}), 400
-
-        w_cm, h_cm = fmt_map[fmt]
-        if orientation == "landscape":
-            w_cm, h_cm = h_cm, w_cm
-
-        # --- 3) UUID-Ordner anlegen ---
-        image_uid = str(uuid.uuid4())
-        generated_parent = os.path.join(app.static_folder, "generated")
-        os.makedirs(generated_parent, exist_ok=True)
-        base_dir = os.path.join(generated_parent, image_uid)
-        os.makedirs(base_dir, exist_ok=True)
-
-        # --- 4) Input speichern ---
-        input_path = os.path.join(base_dir, "input.jpg")
-        file.save(input_path)
-
-        # --- 5) Eingangsbild zentriert auf Seitenverhältnis cropen ---
-        img = Image.open(input_path)
-        orig_w, orig_h = img.size
-        target_ratio = h_cm / w_cm
-        orig_ratio   = orig_h / orig_w
-
-        if orig_ratio > target_ratio:
-            # Bild zu „hoch“ → Höhe reduzieren (oben/unten)
-            new_h = int(target_ratio * orig_w)
-            top   = (orig_h - new_h) // 2
-            img   = img.crop((0, top, orig_w, top + new_h))
-        else:
-            # Bild zu „breit“ → Breite reduzieren (links/rechts)
-            new_w = int(orig_h / target_ratio)
-            left  = (orig_w - new_w) // 2
-            img   = img.crop((left, 0, left + new_w, orig_h))
-
-        # Optional: als 512px-Basis resizen (wie process_image erwartet)
-        # img = img.resize((512, int(512 * target_ratio)), Image.LANCZOS)
-
-        img.save(input_path)
-
-        # --- 6) Prozessieren (PNG, SVG, Preview) ---
-        paths = process_image(
-            input_path,
-            base_dir,
-            width_cm=w_cm,
-            color=color,
-            shape_type=shape_type
-        )
-
-        # --- 7) URLs zurückgeben ---
-        return jsonify({
-            "type": "wandbild_ready",
-            "output_preview_url": url_for(
-                'static',
-                filename=f"generated/{image_uid}/preview.png",
-                _external=True
-            ),
-            "output_png_url": url_for(
-                'static',
-                filename=f"generated/{image_uid}/output.png",
-                _external=True
-            ),
-            "output_svg_url": url_for(
-                'static',
-                filename=f"generated/{image_uid}/output.svg",
-                _external=True
-            ),
-            "image_uid": image_uid
-        })
-
-    except Exception as e:
-        app.logger.exception("Fehler in /api/generate-shopify")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/generate", methods=["POST"])
-def generate():
-    if "image" in request.files and request.files["image"].filename:
-        file = request.files["image"]
-        path = "static/upload.jpg"
-        file.save(path)
-        session['image_uploaded'] = True
-    else:
-        if not os.path.exists("static/upload.jpg"):
-            return render_template("index.html", result=False, error="Kein Bild vorhanden.")
-        path = "static/upload.jpg"
-
-    image_bgr = cv2.imread(path)
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    image_resized = cv2.resize(image_rgb, (512, int(image_rgb.shape[0] * 512 / image_rgb.shape[1])))
-    lab = cv2.cvtColor(image_resized, cv2.COLOR_RGB2LAB)
-    pixels = lab.reshape((-1, 3)).astype(np.float32)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1.0)
-    _, labels, centers = cv2.kmeans(pixels, 8, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-    segmented_img = labels.flatten().reshape((image_resized.shape[:2]))
-
-    mask = np.zeros_like(segmented_img, dtype=np.uint8)
-    for i, c in enumerate(centers):
-        l, a, b = c
-        if 100 < l < 200 and 115 < a < 145 and 115 < b < 145:
-            mask[segmented_img == i] = 255
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    h, w = mask.shape
-    bg_color = request.form.get("color", "#98ffcc")
-    width_cm = float(request.form.get("width_cm", "100"))  # default now 100 cm
-    aspect_ratio = w / h
-    height_cm = round(width_cm / aspect_ratio, 1)
-    price = round(width_cm * height_cm * 0.15 * 0.5, 2)
-
-    shape_type = request.form.get("shape", "circle")
-
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    img = Image.new("RGBA", (w, h), (*ImageColor.getrgb(bg_color), 255))
-    draw = ImageDraw.Draw(img)
-    occupied = np.zeros((h, w), dtype=bool)
-
-    for cnt in contours:
-        for i, pt in enumerate(cnt[::2]):
-            x, y = pt[0]
-            dx, dy = x - w // 2, y - h // 2
-            dist = np.sqrt(dx**2 + dy**2)
-            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
-            r = int(1 + (1 - norm) * 3)
-            s = r + 1
-            if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-                if not occupied[y-s:y+s, x-s:x+s].any():
-                    if shape_type == "circle":
-                        draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "square":
-                        draw.rectangle((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                    elif shape_type == "triangle":
-                        draw.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=(255, 255, 255, 0))
-                    elif shape_type == "sand":
-                        heart = Image.new("L", (2*r+2, 2*r+2), 0)
-                        d = ImageDraw.Draw(heart)
-                        d.polygon([(r, 0), (0, r), (2*r, r), (r, 2*r)], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "realHeart":
-                        heart = Image.new("L", (2*r+4, 2*r+4), 0)
-                        hd = ImageDraw.Draw(heart)
-                        hd.polygon([
-                            (r+2, r//2), (r//2, 0), (0, r//2), (r, 2*r),
-                            (2*r, r//2), (3*r//2, 0), (r+2, r//2)
-                        ], fill=255)
-                        img.paste(Image.new("RGBA", heart.size, (255, 255, 255, 0)), (x - r, y - r), heart)
-                    elif shape_type == "S":
-                        s_path = Image.new("L", (2*r+4, 3*r+4), 0)
-                        d = ImageDraw.Draw(s_path)
-                        d.arc([0, 0, 2*r, 2*r], start=0, end=180, fill=255)
-                        d.arc([0, r, 2*r, 3*r], start=180, end=360, fill=255)
-                        img.paste(Image.new("RGBA", s_path.size, (255, 255, 255, 0)), (x - r, y - r), s_path)
-                    elif shape_type == "I":
-                        draw.rectangle((x - r//3, y - r, x + r//3, y + r), fill=(255, 255, 255, 0))
-                    occupied[y-s:y+s, x-s:x+s] = True
-
-    count = 0
-    for y, x in coords:
-        if count > 2000:
-            break
-        r = np.random.randint(1, 4)
-        s = r + 1
-        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-            if not occupied[y-s:y+s, x-s:x+s].any():
-                draw.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, 0))
-                occupied[y-s:y+s, x-s:x+s] = True
-                count += 1
-
-    border_thickness = 15
-    draw.rectangle([0, 0, w - 1, h - 1], outline=ImageColor.getrgb(bg_color), width=border_thickness)
-    img.save("static/output.png")
-
-    dwg = svgwrite.Drawing("static/output.svg", size=(w, h))
-    occupied_svg = np.zeros((h, w), dtype=bool)
-    count = 0
-    for cnt in contours:
-        for i, pt in enumerate(cnt[::2]):
-            x, y = pt[0]
-            dx, dy = x - w // 2, y - h // 2
-            dist = np.sqrt(dx**2 + dy**2)
-            norm = dist / np.sqrt((w // 2)**2 + (h // 2)**2)
-            radius = int(1 + (1 - norm) * 3)
-            buffer = radius + 1
-            x1, y1, x2, y2 = x - buffer, y - buffer, x + buffer, y + buffer
-            if x1 < 0 or y1 < 0 or x2 >= w or y2 >= h:
-                continue
-            if not occupied_svg[y1:y2, x1:x2].any():
-                if shape_type == "circle":
-                    dwg.add(dwg.circle(center=(float(x), float(y)), r=radius, fill='black', stroke='none'))
-                elif shape_type == "square":
-                    dwg.add(dwg.rect(insert=(float(x-radius), float(y-radius)), size=(2*radius, 2*radius), fill='black'))
-                elif shape_type == "triangle":
-                    points = [(x, y - radius), (x - radius, y + radius), (x + radius, y + radius)]
-                    dwg.add(dwg.polygon(points=[(float(px), float(py)) for px, py in points], fill='black'))
-                elif shape_type == "sand":
-                    path = f"M{x},{y+radius//2} C{x-radius},{y-radius} {x+radius},{y-radius} {x},{y+radius//2} Z"
-                    dwg.add(dwg.path(d=path, fill='black'))
-                elif shape_type == "realHeart":
-                    path = f"M{x},{y} C{x - radius},{y - radius} {x - radius},{y - 2 * radius} {x},{y - radius} " + \
-                           f"C{x + radius},{y - 2 * radius} {x + radius},{y - radius} {x},{y} Z"
-                    dwg.add(dwg.path(d=path, fill='black'))
-                elif shape_type == "S":
-                    path = f"M{x - radius},{y - radius} A{radius},{radius} 0 0,1 {x + radius},{y} " + \
-                           f"A{radius},{radius} 0 0,1 {x - radius},{y + radius}"
-                    dwg.add(dwg.path(d=path, fill='black'))
-                elif shape_type == "I":
-                    dwg.add(dwg.rect(insert=(float(x - radius // 3), float(y - radius)), size=(float(2 * radius // 3), float(2 * radius)), fill='black'))
-                occupied_svg[y1:y2, x1:x2] = True
-                count += 1
-
-
-
-    coords = np.argwhere(mask == 255)
-    np.random.shuffle(coords)
-    for y, x in coords:
-        if count > 4000:
-            break
-        r = np.random.randint(1, 4)
-        s = r + 1
-        if 0 <= x-s < w and 0 <= y-s < h and x+s < w and y+s < h:
-            if not occupied_svg[y-s:y+s, x-s:x+s].any():
-                dwg.add(dwg.circle(center=(float(x), float(y)), r=r, fill='black', stroke='none'))
-                occupied_svg[y-s:y+s, x-s:x+s] = True
-                count += 1
-    dwg.save()
-
-    def create_preview(generated_path, background_path, width_cm_real, preview_path):
-        background = Image.open(background_path).convert("RGBA")
-        foreground = Image.open(generated_path).convert("RGBA")
-        bg_w, bg_h = background.size
-        wand_pixel_breite = int(bg_w * 0.75)
-        pixel_per_cm = wand_pixel_breite / 200.0
-        new_width_px = int(width_cm_real * pixel_per_cm)
-        ratio = foreground.width / foreground.height
-        new_height_px = int(new_width_px / ratio)
-        foreground_resized = foreground.resize((new_width_px, new_height_px), Image.LANCZOS)
-
-        pos_x = (bg_w - new_width_px) // 2
-        sofa_unterkante_y = int(bg_h * 0.5)
-        pos_y = sofa_unterkante_y - new_height_px - 20
-
-        thickness = 6
-        draw_visible = ImageDraw.Draw(foreground_resized)
-        draw_visible.rectangle([0, 0, foreground_resized.width - 1, foreground_resized.height - 1], outline=ImageColor.getrgb(bg_color), width=thickness)
-
-        background.paste(foreground_resized, (pos_x, pos_y), foreground_resized)
-        background.convert("RGB").save(preview_path)
-
-    create_preview("static/output.png", "static/background.jpg", width_cm, "static/preview.png")
-
-    return render_template("index.html", result=True,
-                           width_cm=width_cm,
-                           height_cm=height_cm,
-                           price=price,
-                           image_uploaded=True)
-
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)

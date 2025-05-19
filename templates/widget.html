@@ -59,8 +59,20 @@
       </select>
     </div>
     <div class="form-group">
-      <label for="width_cm">Breite (cm)</label>
-      <input type="number" name="width_cm" id="width_cm" value="100" min="30" max="200" required>
+      <label for="format">Bild-Format</label>
+      <select name="format" id="format" required>
+        <option value="50x70">50 × 70 cm</option>
+        <option value="70x100">70 × 100 cm</option>
+        <option value="100x140">100 × 140 cm</option>
+      </select>
+    </div>
+  
+    <div class="form-group">
+      <label for="orientation">Ausrichtung</label>
+      <select name="orientation" id="orientation">
+        <option value="portrait">Hochformat</option>
+        <option value="landscape">Querformat</option>
+      </select>
     </div>
     <button type="submit" id="generate-btn">Vorschau generieren</button>
   </form>

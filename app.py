@@ -266,60 +266,95 @@ def process_image(input_path: str, base_dir: str, width_cm: float, color: str, s
 @app.route("/api/generate-shopify", methods=["POST"])
 def generate_shopify():
     try:
-        # 1) Parameter auslesen
-        width_cm   = float(request.form["width_cm"])
-        color      = request.form["color"]
-        shape_type = request.form["shape"]
+        # --- 1) Felder auslesen ---
+        file        = request.files.get("image")
+        fmt         = request.form["format"]            # z.B. "50x70"
+        orientation = request.form.get("orientation", "portrait")
+        color       = request.form["color"]
+        shape_type  = request.form["shape"]
 
-        # 2) Neue UUID und Verzeichnis anlegen
+        if not file:
+            return jsonify({"error": "Kein Bild hochgeladen"}), 400
+
+        # --- 2) Format → cm-Werte ---
+        fmt_map = {
+            "50x70":   (50, 70),
+            "70x100":  (70, 100),
+            "100x140": (100, 140)
+        }
+        if fmt not in fmt_map:
+            return jsonify({"error": f"Unbekanntes Format {fmt}"}), 400
+
+        w_cm, h_cm = fmt_map[fmt]
+        if orientation == "landscape":
+            w_cm, h_cm = h_cm, w_cm
+
+        # --- 3) UUID-Ordner anlegen ---
         image_uid = str(uuid.uuid4())
-        # static/generated liegt bereits in deinem Projekt
-        
-        # Erstelle nur den neuen ImageUID-Unterordner unter dem echten STATIC_DIR/generated
-        generated_parent = os.path.join(STATIC_DIR, "generated")
+        generated_parent = os.path.join(app.static_folder, "generated")
         os.makedirs(generated_parent, exist_ok=True)
-
         base_dir = os.path.join(generated_parent, image_uid)
         os.makedirs(base_dir, exist_ok=True)
 
-        # 3) Eingabebild speichern
-        file = request.files.get("image")
-        if not file:
-            return jsonify({"error": "Kein Bild hochgeladen"}), 400
+        # --- 4) Input speichern ---
         input_path = os.path.join(base_dir, "input.jpg")
         file.save(input_path)
 
-        # 4) Prüfe, ob background.jpg existiert
-        bg_path = os.path.join("static", "background.jpg")
-        if not os.path.isfile(bg_path):
-            return jsonify({"error": "Hintergrundbild static/background.jpg fehlt"}), 500
+        # --- 5) Eingangsbild zentriert auf Seitenverhältnis cropen ---
+        img = Image.open(input_path)
+        orig_w, orig_h = img.size
+        target_ratio = h_cm / w_cm
+        orig_ratio   = orig_h / orig_w
 
-        # 5) Bildverarbeitung (PNG, SVG, Vorschau) aufrufen
-        paths = process_image(input_path, base_dir, width_cm, color, shape_type)
+        if orig_ratio > target_ratio:
+            # Bild zu „hoch“ → Höhe reduzieren (oben/unten)
+            new_h = int(target_ratio * orig_w)
+            top   = (orig_h - new_h) // 2
+            img   = img.crop((0, top, orig_w, top + new_h))
+        else:
+            # Bild zu „breit“ → Breite reduzieren (links/rechts)
+            new_w = int(orig_h / target_ratio)
+            left  = (orig_w - new_w) // 2
+            img   = img.crop((left, 0, left + new_w, orig_h))
 
-        # 6) Absolute URLs zusammensetzen und zurückgeben
-        base_url = request.url_root.rstrip("/")
-        # Am Ende:
+        # Optional: als 512px-Basis resizen (wie process_image erwartet)
+        # img = img.resize((512, int(512 * target_ratio)), Image.LANCZOS)
+
+        img.save(input_path)
+
+        # --- 6) Prozessieren (PNG, SVG, Preview) ---
+        paths = process_image(
+            input_path,
+            base_dir,
+            width_cm=w_cm,
+            color=color,
+            shape_type=shape_type
+        )
+
+        # --- 7) URLs zurückgeben ---
         return jsonify({
             "type": "wandbild_ready",
-            "output_preview_url": url_for('static',
-                                        filename=f"generated/{image_uid}/preview.png",
-                                        _external=True),
-            "output_png_url":     url_for('static',
-                                        filename=f"generated/{image_uid}/output.png",
-                                        _external=True),
-            "output_svg_url":     url_for('static',
-                                        filename=f"generated/{image_uid}/output.svg",
-                                        _external=True),
+            "output_preview_url": url_for(
+                'static',
+                filename=f"generated/{image_uid}/preview.png",
+                _external=True
+            ),
+            "output_png_url": url_for(
+                'static',
+                filename=f"generated/{image_uid}/output.png",
+                _external=True
+            ),
+            "output_svg_url": url_for(
+                'static',
+                filename=f"generated/{image_uid}/output.svg",
+                _external=True
+            ),
             "image_uid": image_uid
         })
 
     except Exception as e:
-        # Logge den kompletten Trace ins Server-Log
         app.logger.exception("Fehler in /api/generate-shopify")
-        # Gib die Fehlermeldung im JSON zurück, damit du sie in widget.html siehst
         return jsonify({"error": str(e)}), 500
-
 
 
 @app.route("/generate", methods=["POST"])
